@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+*.egg-info/
+pip-wheel-metadata/
+.pytest_cache/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+
+# Executables (Covered by specific names below, but good general rule)
+# *.exe
+
+# Specific files to ignore by name
+home_screen.png
+播放器.exe
+学习时长激励系统.exe
+config - 副本.json
+half_hour.py日常启动.txt
+
+# Specific directories to ignore
+学习时长图表视频/
+过往版本文件/
+statistics - 备份/
+statistics/
+戈金斯励志视频/
+music_library/
+
+# Special handling for 学习时长图表 and 昼夜表
+# Ignore everything in 学习时长图表/
+学习时长图表/*
+# Ignore everything in 昼夜表/
+昼夜表/*
+# Then, specifically un-ignore (whitelist) the '模板' subdirectory and its contents within 昼夜表/
+!昼夜表/模板/
+!昼夜表/模板/**
+# If '模板' contains subdirectories, use /** to include them recursively.
+
+# Common OS generated files
+.DS_Store
+Thumbs.db
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# IDE / Editor specific (optional, but good practice)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.komodoproject/
+*.swp
+*.swo
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.temp

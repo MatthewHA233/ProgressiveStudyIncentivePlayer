@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音频可视化</title>
+    <style>
+        body { margin: 0; background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { display: block; background: transparent; }
+        
+        /* 控制区域改为垂直排列，并默认隐藏 */
+        #controls { 
+            position: fixed; 
+            top: 20px; 
+            left: 20px; 
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            display: none; /* 默认隐藏控制区域 */
+        }
+        
+        button { 
+            padding: 10px; 
+            width: 100%;
+            display: block; 
+        }
+        
+        #statusInfo { 
+            position: fixed; 
+            top: 100px; 
+            left: 20px; 
+            color: white; 
+            font-size: 14px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        /* 歌曲名称显示样式 - 超强光晕版本 */
+        #songTitle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: 'Arial', sans-serif;
+            font-weight: bold;
+            font-size: 36px;
+            color: rgba(255, 255, 255, 1); /* 纯白色文字 */
+            text-align: center;
+            padding: 8px 20px;
+            border-radius: 30px;
+            background-color: transparent; /* 完全透明背景 */
+            text-shadow: 0 0 30px rgba(255, 255, 255, 1), 
+                         0 0 50px rgba(255, 255, 255, 0.9),
+                         0 0 70px rgba(200, 230, 255, 0.8),
+                         0 0 100px rgba(140, 200, 255, 0.7); /* 极强光晕效果 */
+            opacity: 1;
+            transition: all 0.1s ease; /* 更快的过渡效果，更好地跟随音乐节奏 */
+            pointer-events: none;
+            z-index: 5;
+            letter-spacing: 2px;
+        }
+        
+        /* 音量控制器样式 */
+        #volumeControl {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 10px 20px; /* 增加内边距 */
+            border-radius: 30px; /* 增大圆角 */
+            backdrop-filter: blur(5px);
+        }
+        
+        #volumeInput {
+            width: 120px; /* 增大宽度为原来的3倍 */
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px; /* 增大圆角 */
+            padding: 8px 10px; /* 增大内边距 */
+            text-align: center;
+            margin: 0 10px; /* 增大外边距 */
+            font-size: 36px; /* 增大字体大小为原来的约3倍 */
+        }
+        
+        .volume-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            border-radius: 8px; /* 增大圆角 */
+            width: 60px; /* 增大宽度为原来的约3倍 */
+            height: 60px; /* 增大高度为原来的约3倍 */
+            margin: 0 10px; /* 增大外边距 */
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px; /* 增大字体大小为原来的约3倍 */
+            transition: background 0.2s;
+        }
+        
+        .volume-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .volume-icon {
+            color: white;
+            font-size: 36px; /* 增大字体大小为原来的约3倍 */
+            width: 40px; /* 增大宽度 */
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button id="startButton">开始麦克风</button>
+        <input type="file" id="audioFile" accept="audio/*">
+    </div>
+    <div id="statusInfo"></div>
+    <div id="songTitle"></div>
+    
+    <!-- 替换音量控制器 -->
+    <div id="volumeControl">
+        <span class="volume-icon">🔈</span>
+        <button class="volume-btn" id="volumeDown">-</button>
+        <input type="number" id="volumeInput" min="0" max="100" value="20">
+        <button class="volume-btn" id="volumeUp">+</button>
+        <span class="volume-icon">🔊</span>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const audioFile = document.getElementById('audioFile');
+        const statusInfo = document.getElementById('statusInfo');
+        const songTitle = document.getElementById('songTitle');
+        
+        let audioContext;
+        let analyser;
+        let source;
+        let dataArray;
+        let animationId;
+        let gainNode; // 用于控制音量
+
+        // 添加的新变量
+        let currentMusicFile = '';
+        let isAutoPlayEnabled = true; // 默认开启自动播放
+        let audioElement = null;
+        let songTitleSize = 30; // 基础字体大小
+        let peakValue = 0; // 音频峰值
+
+        // 重试逻辑相关变量
+        let fetchMusicRetryCount = 0;
+        const MAX_MUSIC_LOAD_RETRIES = 3;
+
+        const particles = []; // 存放粒子对象的数组
+        const MAX_PARTICLES = 50; // 最大粒子数量
+        const PARTICLE_LIFETIME = 100; // 粒子生命周期（帧数）
+
+        // 设置canvas大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // 从音乐文件名提取歌曲标题（去除歌手信息）
+        function extractSongTitle(filename) {
+            // 移除文件扩展名
+            let name = filename.replace(/\.(mp3|flac|wav|ogg)$/i, '');
+            
+            // 检查是否有 "歌手 - 标题" 格式
+            if (name.includes(' - ')) {
+                // 取分隔符后面的部分作为标题
+                return name.split(' - ').slice(1).join(' - ');
+            }
+            
+            return name; // 如果没有分隔符，返回整个名称
+        }
+        
+        // 改进cleanPlaylistName函数，修复歌单名称处理问题
+        function cleanPlaylistName(playlistName) {
+            if (!playlistName) return null;
+            let name = String(playlistName).trim(); //确保是字符串
+            
+            // 记录原始输入，帮助调试
+            console.log(`处理歌单名: "${name}"`);
+            
+            // 1. 去头：移除开头的『
+            if (name.startsWith('『')) {
+                name = name.substring(1);
+            }
+            
+            // 2. 使用字符串替换而不是截取特定长度
+            // 处理各种可能的后缀变体
+            const suffixes = [
+                '』渐进学习时长激励歌单',
+                '』渐进学习时长激歌单',
+                '渐进学习时长激励歌单',
+                '渐进学习时长激歌单',
+                '』'
+            ];
+            
+            for (const suffix of suffixes) {
+                if (name.endsWith(suffix)) {
+                    name = name.substring(0, name.length - suffix.length);
+                    console.log(`移除后缀"${suffix}"，结果: "${name}"`);
+                    break;
+                }
+            }
+            
+            // 确保结果是干净的
+            const result = name.trim();
+            console.log(`最终清理结果: "${result}"`);
+            return result;
+        }
+        
+        // 更新歌曲标题显示 - 超强光晕版本
+        function updateSongTitleDisplay(intensity) {
+            if (!currentMusicFile) return;
+            
+            const title = extractSongTitle(currentMusicFile);
+            songTitle.textContent = title;
+            
+            // 更大的字体大小变化范围
+            const size = songTitleSize + (intensity * 60); // 极大的变化范围
+            songTitle.style.fontSize = `${size}px`;
+            
+            // 超强光晕效果 - 至少当前的3倍
+            const glowSize = 40 + (intensity * 100); // 极大的光晕基础值和变化范围
+            const glowIntensity = Math.min(1, 0.5 + intensity * 0.5);
+            
+            // 使用核心颜色作为发光效果，但增加强度
+            const r = coreColorR || 100;
+            const g = coreColorG || 200;
+            const b = coreColorB || 255;
+            
+            // 多层次的极强光晕效果
+            songTitle.style.textShadow = `
+                0 0 ${glowSize*0.2}px rgba(255, 255, 255, 1),
+                0 0 ${glowSize*0.4}px rgba(255, 255, 255, ${glowIntensity}),
+                0 0 ${glowSize*0.6}px rgba(${r}, ${g}, ${b}, ${glowIntensity}),
+                0 0 ${glowSize*0.8}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.9}),
+                0 0 ${glowSize}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.8}),
+                0 0 ${glowSize*1.5}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.7}),
+                0 0 ${glowSize*2}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.6}),
+                0 0 ${glowSize*3}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.5})
+            `;
+            
+            // 保持背景透明
+            songTitle.style.backgroundColor = 'transparent';
+            songTitle.style.boxShadow = 'none';
+            
+            // 调整文本不透明度
+            songTitle.style.opacity = 0.8 + (intensity * 0.2);
+            
+            // 随着强度调整字间距，增加动态效果
+            songTitle.style.letterSpacing = `${2 + intensity * 4}px`;
+            
+            // 随着强度轻微缩放，增加脉动效果
+            const scale = 1 + intensity * 0.2;
+            songTitle.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        }
+        
+        // 替换音量控制器功能
+        const volumeInput = document.getElementById('volumeInput');
+        const volumeUp = document.getElementById('volumeUp');
+        const volumeDown = document.getElementById('volumeDown');
+
+        // 设置初始音量
+        volumeInput.value = 50; // 默认音量50%
+
+        // 更新音量的函数
+        function updateVolume(value) {
+            // 确保值在0-100之间
+            value = Math.max(0, Math.min(100, value));
+            volumeInput.value = value;
+            
+            // 如果gainNode已初始化，则设置音量
+            if (gainNode) {
+                gainNode.gain.value = value / 100;
+            }
+        }
+
+        // 监听输入框变化
+        volumeInput.addEventListener('change', function() {
+            updateVolume(parseInt(this.value) || 0);
+        });
+
+        // 增加音量按钮
+        volumeUp.addEventListener('click', function() {
+            const currentVolume = parseInt(volumeInput.value) || 0;
+            updateVolume(currentVolume + 10); // 增加10%
+        });
+
+        // 减少音量按钮
+        volumeDown.addEventListener('click', function() {
+            const currentVolume = parseInt(volumeInput.value) || 0;
+            updateVolume(currentVolume - 10); // 减少10%
+        });
+
+        // 初始化音频分析器时设置默认音量与输入框一致
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.75;
+            
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = parseInt(volumeInput.value) / 100; // 使用输入框的值
+
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+            
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+        }
+        
+        // 从麦克风获取音频
+        startButton.addEventListener('click', async () => {
+            if (!audioContext) initAudio();
+            // 确保 audioContext 和 gainNode 已初始化
+            if (!gainNode && audioContext) { // 如果 gainNode 未在 initAudio 中正确创建（理论上不应发生）
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = 0.4;
+                gainNode.connect(analyser);
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                if (source) { // 如果已有source，先断开
+                    source.disconnect();
+                }
+                source = audioContext.createMediaStreamSource(stream);
+                source.connect(gainNode); // 音频源连接到 GainNode
+                
+                if (!animationId) {
+                    draw();
+                }
+            } catch (err) {
+                console.error('获取麦克风失败:', err);
+            }
+        });
+        
+        // 从文件获取音频
+        audioFile.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            if (!audioContext) initAudio();
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                audioContext.decodeAudioData(e.target.result, (buffer) => {
+                    if (source) {
+                        source.disconnect();
+                    }
+                    // 确保 audioContext 和 gainNode 已初始化
+                    if (!gainNode && audioContext) { // 如果 gainNode 未在 initAudio 中正确创建
+                        gainNode = audioContext.createGain();
+                        gainNode.gain.value = 0.4;
+                        gainNode.connect(analyser);
+                    }
+                    
+                    source = audioContext.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(gainNode); // 音频源连接到 GainNode
+                    source.start(0);
+                    
+                    // 更新当前文件名并显示标题
+                    currentMusicFile = file.name;
+                    updateSongTitleDisplay(0.5); // 初始中等强度
+                    
+                    if (!animationId) {
+                        draw();
+                    }
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+        
+        // 添加一个新函数用于从CSV获取级别信息
+        async function getLevelFromCSV(musicName) {
+            try {
+                // 获取CSV文件
+                const response = await fetch('./WallpaperMusicMatcher.csv');
+                if (!response.ok) {
+                    // throw new Error(`无法加载CSV文件: ${response.status}`); // 改为返回null
+                    console.warn(`无法加载CSV文件: ${response.status}, musicName: ${musicName}`);
+                    return null;
+                }
+                
+                const csvText = await response.text();
+                
+                // 移除BOM (Byte Order Mark)
+                let cleanedCsvText = csvText;
+                if (cleanedCsvText.charCodeAt(0) === 0xFEFF) {
+                    cleanedCsvText = cleanedCsvText.substring(1);
+                }
+                
+                const lines = cleanedCsvText.split('\n');
+                
+                // 查找匹配的歌曲
+                for (let i = 1; i < lines.length; i++) { // 从第二行开始（跳过标题行）
+                    const columns = lines[i].split(',');
+                    if (columns.length >= 2) {
+                        const songNameInCsv = columns[1].trim();
+                        if (songNameInCsv === musicName) {
+                            // 找到匹配的歌曲，提取并清理歌单名
+                            let playlistName = columns[0].trim();
+                            return cleanPlaylistName(playlistName); // 使用清理函数
+                        }
+                    }
+                }
+                
+                // 如果没有找到匹配项，返回null
+                console.log(`在CSV中未找到歌曲 "${musicName}" 的级别信息。`);
+                return null;
+            } catch (error) {
+                console.error(`从CSV获取级别信息 '${musicName}' 失败:`, error);
+                return null; // 出错时返回null
+            }
+        }
+
+        // 修改loadColorFromConfig函数，从CSV获取级别，并接受可选参数
+        async function loadColorFromConfig(providedLevel = null) {
+            try {
+                let currentLevel = providedLevel;
+
+                if (!currentLevel) {
+                    // 如果没有提供级别，并且没有当前音乐文件，则不进行操作
+                    if (!currentMusicFile) {
+                        console.log("loadColorFromConfig: 没有当前音乐文件，不加载颜色。");
+                        return;
+                    }
+                    
+                    // 尝试从CSV获取当前级别
+                    currentLevel = await getLevelFromCSV(currentMusicFile);
+
+                    if (!currentLevel) {
+                        // 如果CSV中没有，尝试从 floating_button_data.json 的 current_level 获取
+                        console.log(`loadColorFromConfig: CSV未找到 ${currentMusicFile} 的级别, 尝试从JSON获取.`);
+                        try {
+                            const response = await fetch(`./floating_button_data.json?t=${Date.now()}`);
+                            if (response.ok) {
+                                const data = await response.json();
+                                // 确保JSON中的音乐与当前音乐匹配
+                                if (data.current_music === currentMusicFile && data.current_level) {
+                                   currentLevel = cleanPlaylistName(data.current_level);
+                                   console.log(`loadColorFromConfig: 从JSON的current_level获取到级别: ${currentLevel}`);
+                                } else {
+                                    console.log(`loadColorFromConfig: JSON中的音乐 (${data.current_music}) 与当前音乐 (${currentMusicFile}) 不匹配或无current_level.`);
+                                }
+                            } else {
+                                console.warn(`loadColorFromConfig: 无法加载 floating_button_data.json 以获取备用级别.`);
+                            }
+                        } catch (e) { 
+                            console.warn("loadColorFromConfig: 获取JSON以获取备用级别时出错:", e); 
+                        }
+                    }
+                }
+                
+                if (!currentLevel) {
+                    console.warn(`loadColorFromConfig: 最终无法确定歌曲 "${currentMusicFile || '未知歌曲'}" 的级别，无法加载特定颜色配置。`);
+                    // 在这里可以考虑重置为非常通用的默认颜色方案，或者什么都不做
+                    // setColorTheme(40, 140, 255); // 例如，重置为默认蓝色系
+                    return;
+                }
+
+                console.log(`loadColorFromConfig: 当前阶段确定为: ${currentLevel}`);
+                
+                // 然后从config.json加载颜色配置
+                const configResponse = await fetch('config.json');
+                if (!configResponse.ok) {
+                    throw new Error('无法加载配置文件 config.json');
+                }
+                
+                const config = await configResponse.json();
+                
+                // 查找当前阶段的颜色
+                const levelConfig = config.levels.find(level => level.name === currentLevel);
+                
+                if (levelConfig && levelConfig.color) {
+                    // 解析RGBA颜色
+                    const rgbaMatch = levelConfig.color.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
+                    
+                    if (rgbaMatch) {
+                        // 更新核心颜色
+                        coreColorR = parseInt(rgbaMatch[1]);
+                        coreColorG = parseInt(rgbaMatch[2]);
+                        coreColorB = parseInt(rgbaMatch[3]);
+                        
+                        // 重新生成颜色方案
+                        updateColorVariables();
+                        
+                        console.log(`已从配置加载颜色: R=${coreColorR}, G=${coreColorG}, B=${coreColorB} (级别: ${currentLevel})`);
+                    } else {
+                         console.warn(`阶段"${currentLevel}"的颜色格式无法解析: ${levelConfig.color}`);
+                    }
+                } else {
+                    console.warn(`未找到阶段"${currentLevel}"的颜色配置，将使用当前的或默认的颜色。`);
+                }
+            } catch (error) {
+                console.error('加载颜色配置失败:', error);
+            }
+        }
+
+        // 修改fetchCurrentMusic函数，添加更严格的错误处理和冷却期
+        async function fetchCurrentMusic() {
+            if (!isAutoPlayEnabled) return;
+            
+            // 防止重复请求：如果上次请求时间太近，则跳过本次请求
+            if (window.lastFetchTime && (Date.now() - window.lastFetchTime < 3000)) {
+                // console.log("请求间隔太短，跳过本次请求");
+                return;
+            }
+            window.lastFetchTime = Date.now();
+            
+            try {
+                // 添加时间戳防止缓存
+                const timestamp = Date.now();
+                const response = await fetch(`./floating_button_data.json?t=${timestamp}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP错误! 状态: ${response.status} (无法加载 floating_button_data.json)`);
+                }
+                
+                const data = await response.json();
+                const musicName = data.current_music;
+                const levelFromJsonRaw = data.current_level; // 从JSON获取原始current_level
+                
+                // 检查是否与最近失败的音乐文件相同，如果是且最近失败次数过多，则跳过
+                if (window.recentFailedMusic === musicName && window.recentFailedCount >= MAX_MUSIC_LOAD_RETRIES) {
+                    console.log(`跳过最近多次失败的音乐: ${musicName}，防止无限重试`);
+                    return;
+                }
+                
+                if (musicName && musicName !== currentMusicFile) {
+                    console.log(`检测到新音乐: ${musicName} (之前: ${currentMusicFile || '无'})`);
+                    // 音乐已更改，先终止当前播放的音乐
+                    if (audioElement) {
+                        audioElement.pause();
+                        audioElement.src = ''; // 清除源，防止旧音频干扰
+                    }
+                    if (source) {
+                        try { source.disconnect(); } catch(e) {}
+                    }
+                    
+                    let levelFolderName = await getLevelFromCSV(musicName);
+                    
+                    if (!levelFolderName && levelFromJsonRaw) {
+                        console.log(`无法从CSV获取 "${musicName}" 的级别，尝试使用 floating_button_data.json 中的 current_level: "${levelFromJsonRaw}"`);
+                        levelFolderName = cleanPlaylistName(levelFromJsonRaw);
+                        if (levelFolderName) {
+                            console.log(`使用来自JSON的清理后级别: "${levelFolderName}"`);
+                        } else {
+                            console.warn(`清理来自JSON的级别 "${levelFromJsonRaw}" 后结果为空。`);
+                        }
+                    }
+
+                    if (!levelFolderName) {
+                        console.error(`无法为歌曲 "${musicName}" 确定有效的级别信息 (尝试了CSV和JSON)。将不会尝试播放此歌曲。`);
+                        // 记录这个失败，防止重复尝试
+                        window.recentFailedMusic = musicName;
+                        window.recentFailedCount = MAX_MUSIC_LOAD_RETRIES + 1; // 直接设为超过最大重试次数
+                        return; 
+                    }
+                    
+                    console.log(`最终确定歌曲 "${musicName}" 的级别为: "${levelFolderName}"`);
+                    
+                    // 构建音乐文件路径
+                    const musicPath = `./music_library/${levelFolderName}/${musicName}`;
+                    
+                    // 调用 loadAndPlayMusic，它将在成功时更新 currentMusicFile, songTitle, colors
+                    loadAndPlayMusic(musicPath, musicName, levelFolderName);
+                    
+                    if(window.location.href.includes('-test')) {
+                        statusInfo.style.display = 'block';
+                        statusInfo.textContent = `尝试播放: ${musicName} (来自级别: ${levelFolderName})`;
+                    }
+                }
+            } catch (error) {
+                console.error('获取或处理音乐信息失败 (fetchCurrentMusic try/catch):', error);
+                // 添加暂停时间，避免快速连续请求
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                if(window.location.href.includes('-test')) {
+                    statusInfo.textContent = `获取音乐信息失败: ${error.message}`;
+                    statusInfo.style.display = 'block';
+                    setTimeout(() => { statusInfo.style.display = 'none'; }, 10000);
+                }
+            }
+        }
+        
+        // 修改loadAndPlayMusic函数，加强错误处理和防止无限重试
+        function loadAndPlayMusic(musicPath, newMusicName, levelNameForStatus) {
+            if (!audioContext) initAudio();
+            
+            if (source) {
+                try { source.disconnect(); } catch (e) {}
+            }
+            
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.removeAttribute('src');
+                audioElement.load();
+            }
+            
+            // 记录当前尝试的音乐，用于跟踪失败
+            window.recentFailedMusic = newMusicName;
+            
+            audioElement = new Audio();
+            audioElement.crossOrigin = "anonymous";
+            
+            const handleErrorAndRetry = (errorType, errorMessage) => {
+                console.error(`${errorType}: ${newMusicName} (路径: ${musicPath}). ${errorMessage}`);
+                
+                // 更新失败计数
+                window.recentFailedCount = (window.recentFailedCount || 0) + 1;
+                console.log(`当前失败计数: ${window.recentFailedCount}/${MAX_MUSIC_LOAD_RETRIES}`);
+
+                if (window.recentFailedCount <= MAX_MUSIC_LOAD_RETRIES) {
+                    console.log(`音乐处理失败，延迟重试 (${window.recentFailedCount}/${MAX_MUSIC_LOAD_RETRIES})...`);
+                    if(window.location.href.includes('-test')) {
+                        statusInfo.textContent = `${errorType}: ${newMusicName}. 重试 ${window.recentFailedCount}/${MAX_MUSIC_LOAD_RETRIES}...`;
+                        statusInfo.style.display = 'block';
+                    }
+                    
+                    if (audioElement) {
+                        audioElement.pause();
+                        audioElement.src = '';
+                    }
+                    
+                    // 增加更长的延迟，避免频繁重试
+                    setTimeout(() => {
+                        // 检查是否与最近失败的音乐相同
+                        if (window.recentFailedMusic === newMusicName) {
+                            console.log(`延迟后尝试重试播放: ${newMusicName}`);
+                            fetchCurrentMusic(); // 重新从获取json开始
+                        }
+                    }, 5000 + window.recentFailedCount * 2000); // 更长的指数级延迟
+                } else {
+                    console.error(`音乐 "${newMusicName}" 达到最大重试次数 (${MAX_MUSIC_LOAD_RETRIES})，放弃播放。`);
+                    if(window.location.href.includes('-test')) {
+                        statusInfo.textContent = `放弃播放 ${newMusicName} (已达最大重试次数).`;
+                        statusInfo.style.display = 'block';
+                        setTimeout(() => { statusInfo.style.display = 'none'; }, 15000);
+                    }
+                    
+                    // 放弃后，清除当前音乐状态
+                    if (currentMusicFile === newMusicName) {
+                        currentMusicFile = '';
+                        songTitle.textContent = '';
+                    }
+                    if (animationId) {
+                        cancelAnimationFrame(animationId);
+                        animationId = null;
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
+                    // 不要重置失败计数器，保持记忆以避免无限重试
+                    // window.recentFailedCount = 0;
+                }
+            };
+
+            audioElement.addEventListener('error', (e) => {
+                let errorDetail = "未知加载错误";
+                if (e.target && e.target.error) {
+                    switch (e.target.error.code) {
+                        case MediaError.MEDIA_ERR_ABORTED: errorDetail = '用户中止'; break;
+                        case MediaError.MEDIA_ERR_NETWORK: errorDetail = '网络错误'; break;
+                        case MediaError.MEDIA_ERR_DECODE: errorDetail = '解码错误'; break;
+                        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED: errorDetail = '源不支持'; break;
+                        default: errorDetail = `代码: ${e.target.error.code}`;
+                    }
+                }
+                handleErrorAndRetry('音频加载错误', errorDetail);
+            });
+            
+            audioElement.src = musicPath;
+            
+            // 添加一个10秒超时，防止加载无响应
+            const loadTimeout = setTimeout(() => {
+                console.log(`音乐加载超时: ${newMusicName}`);
+                handleErrorAndRetry('加载超时', '10秒内未响应');
+            }, 10000);
+
+            audioElement.addEventListener('canplaythrough', () => {
+                // 清除超时定时器
+                clearTimeout(loadTimeout);
+                
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume().catch(e => console.warn("AudioContext resume failed:", e));
+                }
+                
+                if (source) { // 确保旧的source已断开
+                     try { source.disconnect(); } catch(e){}
+                }
+                source = audioContext.createMediaElementSource(audioElement);
+                source.connect(gainNode);
+                
+                const playPromise = audioElement.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log(`音乐 "${newMusicName}" (级别: "${levelNameForStatus}") 成功开始播放。`);
+                        currentMusicFile = newMusicName; 
+                        updateSongTitleDisplay(0.5); 
+                        loadColorFromConfig(levelNameForStatus); // 传递已知的级别
+
+                        if(window.location.href.includes('-test')) {
+                            statusInfo.style.display = 'block';
+                            statusInfo.textContent = `正在播放: ${newMusicName} (级别: ${levelNameForStatus})`;
+                            setTimeout(() => { statusInfo.style.display = 'none'; }, 30000);
+                        }
+                        
+                        // 重置失败计数器，因为成功播放了
+                        window.recentFailedCount = 0;
+                        window.recentFailedMusic = '';
+                        if (!animationId) {
+                            draw();
+                        }
+                    }).catch(err => {
+                        handleErrorAndRetry('播放操作失败', err.message);
+                    });
+                } else {
+                     // 对于没有返回Promise的旧浏览器，我们假设它会尝试播放
+                     // 但现代浏览器都应该返回Promise
+                     console.warn("audioElement.play() did not return a Promise. Assuming playback started.");
+                     // 在这种情况下，我们无法确切知道播放是否成功，但可以乐观处理
+                        currentMusicFile = newMusicName; 
+                        updateSongTitleDisplay(0.5); 
+                        loadColorFromConfig(levelNameForStatus);
+                        if(window.location.href.includes('-test')) {
+                            statusInfo.style.display = 'block';
+                            statusInfo.textContent = `正在播放 (无Promise): ${newMusicName}`;
+                        }
+                        // 重置失败计数器，因为成功播放了
+                        window.recentFailedCount = 0;
+                        window.recentFailedMusic = '';
+                        if (!animationId) draw();
+                }
+            });
+            
+            audioElement.loop = false; // 通常背景音乐可视化不需要循环单个文件，而是列表切换
+        }
+        
+        // 移除 tryFallbackPath 函数，或注释掉
+        /*
+        function tryFallbackPath(originalPath) {
+            // ... (内容已省略) ...
+        }
+        */
+
+        function createParticle(x, y, size, color, speedMultiplier = 1) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (Math.random() * 2 + 1) * speedMultiplier;
+            return {
+                x,
+                y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: Math.random() * size + size,
+                color: color || `rgba(255, 255, 255, ${Math.random() * 0.2 + 0.8})`,
+                life: PARTICLE_LIFETIME,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            };
+        }
+
+        function updateAndDrawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                p.rotation += p.rotationSpeed;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+                
+                // 使用与参考图一致的三角形风格：三个点三个线，白线蓝光晕
+                const triangleSize = p.size * 1.8; // 更大一些
+                const halfSize = triangleSize / 2;
+                
+                // 三个点的位置
+                const points = [
+                    {x: 0, y: -halfSize},          // 顶点
+                    {x: halfSize, y: halfSize},    // 右下
+                    {x: -halfSize, y: halfSize}    // 左下
+                ];
+                
+                // 1. 绘制强烈的蓝色光晕 (没有填充色)
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.shadowBlur = triangleSize * 1.5;
+                ctx.shadowColor = rgba(colorScheme.intense, p.life / PARTICLE_LIFETIME * 0.9);
+                
+                // 2. 绘制白色线框
+                ctx.beginPath();
+                // 绘制三角形轮廓 (三条线)
+                ctx.moveTo(points[0].x, points[0].y);
+                ctx.lineTo(points[1].x, points[1].y);
+                ctx.lineTo(points[2].x, points[2].y);
+                ctx.closePath();
+                
+                // 更明显的白色线条
+                ctx.strokeStyle = rgba(colorScheme.point, p.life / PARTICLE_LIFETIME * 0.95);
+                ctx.lineWidth = 1.8; // 稍微粗一点的线
+                ctx.stroke();
+                
+                // 3. 在三个顶点绘制更大的光点
+                const pointRadius = 2.5; // 增大端点尺寸
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = rgba(colorScheme.mid, 0.9);
+                
+                for (let j = 0; j < 3; j++) {
+                    // 先绘制光晕
+                    ctx.beginPath();
+                    ctx.arc(points[j].x, points[j].y, pointRadius * 1.5, 0, Math.PI * 2);
+                    const pointGlow = ctx.createRadialGradient(
+                        points[j].x, points[j].y, 0,
+                        points[j].x, points[j].y, pointRadius * 2.5
+                    );
+                    pointGlow.addColorStop(0, rgba(colorScheme.highlight, p.life / PARTICLE_LIFETIME * 0.8));
+                    pointGlow.addColorStop(0.6, rgba(colorScheme.core, p.life / PARTICLE_LIFETIME * 0.4));
+                    pointGlow.addColorStop(1, rgba(colorScheme.dark, 0));
+                    ctx.fillStyle = pointGlow;
+                    ctx.fill();
+                    
+                    // 再绘制白色核心
+                    ctx.beginPath();
+                    ctx.arc(points[j].x, points[j].y, pointRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${p.life / PARTICLE_LIFETIME * 0.95})`;
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+
+        // --- 核心颜色定义与辅助颜色生成 ---
+        // 默认是蓝色系，但会根据config.json中的阶段颜色进行更新
+        let coreColorR = 40;  // 红色成分
+        let coreColorG = 140; // 绿色成分
+        let coreColorB = 255; // 蓝色成分 (最大值)
+
+        // 更强大的颜色变体计算函数
+        function generateColorScheme(r, g, b) {
+            // 确保值在合理范围内
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+            
+            return {
+                // 核心颜色本身
+                core: {r, g, b},
+                
+                // 更亮的变体 (增加所有通道以保持原始颜色的相对比例)
+                bright: {
+                    r: Math.min(255, r + (255 - r) * 0.7),
+                    g: Math.min(255, g + (255 - g) * 0.7), 
+                    b: Math.min(255, b + (255 - b) * 0.7)
+                },
+                
+                // 发光效果使用的淡化变体
+                glow: {
+                    r: Math.min(255, r + (255 - r) * 0.4),
+                    g: Math.min(255, g + (255 - g) * 0.4),
+                    b: Math.min(255, b + (255 - b) * 0.4)
+                },
+                
+                // 辅助颜色 (中等亮度)
+                mid: {
+                    r: Math.min(255, r + (255 - r) * 0.2),
+                    g: Math.min(255, g + (255 - g) * 0.2),
+                    b: Math.min(255, b + (255 - b) * 0.2)
+                },
+                
+                // 深色变体 (用于渐变终点，降低亮度但保持色相)
+                dark: {
+                    r: Math.floor(r * 0.6),
+                    g: Math.floor(g * 0.6),
+                    b: Math.floor(b * 0.6)
+                },
+                
+                // 更深的变体
+                darker: {
+                    r: Math.floor(r * 0.3),
+                    g: Math.floor(g * 0.3),
+                    b: Math.floor(b * 0.3)
+                },
+                
+                // 线条颜色 (纯白色，但保留微弱的核心色光晕)
+                line: {
+                    r: Math.min(255, r + (255 - r) * 0.95),
+                    g: Math.min(255, g + (255 - g) * 0.95),
+                    b: Math.min(255, b + (255 - b) * 0.95)
+                },
+                
+                // 点的颜色 (纯白色，作为高光)
+                point: {
+                    r: 255,
+                    g: 255,
+                    b: 255
+                },
+                
+                // 特殊变体
+                // 更透明的核心色
+                soft: {
+                    r: Math.min(255, r + (255 - r) * 0.1),
+                    g: Math.min(255, g + (255 - g) * 0.1),
+                    b: Math.min(255, b + (255 - b) * 0.1)
+                },
+                
+                // 更强烈的核心色
+                intense: {
+                    r: Math.max(0, r - r * 0.1),
+                    g: Math.max(0, g - g * 0.1),
+                    b: Math.max(0, b - b * 0.1)
+                },
+                
+                // 高亮变体
+                highlight: {
+                    r: Math.min(255, r + (255 - r) * 0.5),
+                    g: Math.min(255, g + (255 - g) * 0.5),
+                    b: Math.min(255, b + (255 - b) * 0.5)
+                }
+            };
+        }
+
+        // 生成当前的颜色方案
+        let colorScheme = generateColorScheme(coreColorR, coreColorG, coreColorB);
+
+        // 更新所有颜色变量
+        function updateColorVariables() {
+            colorScheme = generateColorScheme(coreColorR, coreColorG, coreColorB);
+        }
+
+        // 方便生成rgba字符串的函数
+        function rgba(color, alpha) {
+            return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+        }
+
+        // 允许通过参数更改颜色主题
+        function setColorTheme(r, g, b) {
+            coreColorR = r;
+            coreColorG = g;
+            coreColorB = b;
+            updateColorVariables();
+        }
+
+        // 绘制可视化效果
+        function draw() {
+            animationId = requestAnimationFrame(draw);
+            if (!analyser) return;
+            
+            analyser.getByteFrequencyData(dataArray);
+            
+            // 计算当前音频强度，并立即更新标题效果
+            const sum = dataArray.reduce((acc, val) => acc + val, 0);
+            const avg = sum / dataArray.length;
+            const normalizedIntensity = Math.min(1, avg / 120); // 归一化到0-1范围，降低阈值使效果更明显
+            
+            // 每帧实时更新歌曲标题效果，确保与音乐同步
+            if (currentMusicFile) {
+                updateSongTitleDisplay(normalizedIntensity);
+            }
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) / 3.0; // 增大基础半径
+            
+            // 定义频率范围和频段数量
+            const targetStartFreq = 20; // Hz
+            const targetEndFreq = 1000; // Hz
+            const numVisualBars = 80; // 固定的频段数量
+
+            const nyquist = audioContext.sampleRate / 2;
+            const startIndex = Math.max(0, Math.floor(targetStartFreq / nyquist * analyser.frequencyBinCount));
+            const endIndex = Math.min(analyser.frequencyBinCount - 1, Math.ceil(targetEndFreq / nyquist * analyser.frequencyBinCount));
+            const selectedDataLength = endIndex - startIndex + 1;
+
+            // 计算整体音频强度，用于光晕效果
+            const overallBrightness = dataArray.reduce((sum, val) => sum + val, 0) / (dataArray.length * 255);
+            
+            // --- 计算频谱信息并存储点坐标 ---
+            let peakValue = 0;
+            // 主要高度控制参数
+            const maxBarHeightRatio = 1; 
+            const heightExponent = 8.0;   
+            
+            // 低音量敏感跳动控制参数 - 更平衡的设置
+            const milletGrainHeight = 0.8;          
+            const flickerActivationThreshold = 0.002; 
+            const flickerSaturationThreshold = 0.12;  
+            const flickerIntensityExponent = 0.4;     
+            const microVariationIntensity = 0.15;     
+            
+            const pointsA = []; 
+            const pointsB = []; 
+
+            for (let i = 0; i < numVisualBars; i++) {
+                // 从选定的频率数据范围中采样
+                let valueSum = 0;
+                const samplesPerBar = Math.max(1, Math.floor(selectedDataLength / numVisualBars));
+                const barDataStartIndex = startIndex + Math.floor(i * (selectedDataLength / numVisualBars));
+                
+                for (let j = 0; j < samplesPerBar; j++) {
+                    const dataIdx = Math.min(endIndex, barDataStartIndex + j);
+                    valueSum += dataArray[dataIdx] || 0;
+                }
+                let value = samplesPerBar > 0 ? valueSum / samplesPerBar : 0;
+
+                if (value > peakValue) peakValue = value;
+
+                const angle = (i / numVisualBars) * Math.PI * 2 - Math.PI / 2; 
+                
+                const normalizedValue = value / 255; 
+                const nonLinearValue = Math.pow(normalizedValue, heightExponent); 
+                                
+                // 计算主要高度
+                const mainBarHeight = nonLinearValue * (baseRadius * maxBarHeightRatio); 
+
+                // 计算敏感的低音量跳动高度
+                let dynamicFlickerHeight = 0;
+                if (normalizedValue > flickerActivationThreshold) {
+                    const intensityRatio = Math.min(1, (normalizedValue - flickerActivationThreshold) / 
+                                               (flickerSaturationThreshold - flickerActivationThreshold));
+                    
+                    dynamicFlickerHeight = Math.pow(intensityRatio, flickerIntensityExponent) * milletGrainHeight;
+                    const microVariation = normalizedValue * microVariationIntensity * (Math.random() - 0.5);
+                    dynamicFlickerHeight = Math.max(0, dynamicFlickerHeight + microVariation);
+                }
+
+                // 结合两种高度
+                let barHeight = Math.max(mainBarHeight, dynamicFlickerHeight);
+                barHeight = Math.max(0.05, barHeight); 
+
+                const radiusA = baseRadius + barHeight;
+                const xA = centerX + radiusA * Math.cos(angle);
+                const yA = centerY + radiusA * Math.sin(angle);
+                pointsA.push({ x: xA, y: yA, val: nonLinearValue, originalNormalizedValue: normalizedValue });
+
+                const radiusB = baseRadius - barHeight;
+                const xB = centerX + radiusB * Math.cos(angle);
+                const yB = centerY + radiusB * Math.sin(angle);
+                pointsB.push({ x: xB, y: yB, val: nonLinearValue, originalNormalizedValue: normalizedValue });
+            }
+            
+            // --- 绘制外围光晕 ---
+            const spectrumOuterGlow = ctx.createRadialGradient(
+                centerX, centerY, baseRadius * 0.9,
+                centerX, centerY, baseRadius * 1.8
+            );
+
+            // 计算光晕的强度系数 - 根据音频强度调整
+            const glowIntensity = Math.min(1, peakValue / 180); // 将峰值归一化为0-1
+
+            // 使用多个渐变点创建更自然的光晕过渡，并根据音频强度调整透明度
+            spectrumOuterGlow.addColorStop(0, rgba(colorScheme.mid, 0.35 * glowIntensity));
+            spectrumOuterGlow.addColorStop(0.3, rgba(colorScheme.core, 0.25 * glowIntensity));
+            spectrumOuterGlow.addColorStop(0.7, rgba(colorScheme.dark, 0.15 * glowIntensity));
+            spectrumOuterGlow.addColorStop(1, rgba(colorScheme.darker, 0));
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius * 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = spectrumOuterGlow;
+            ctx.fill();
+            
+            // --- 绘制频谱分段 (增强白色线条的蓝色发光) ---
+            ctx.lineWidth = 2.0; // 更粗的线宽
+            ctx.lineJoin = 'round'; // 圆滑连接
+            ctx.miterLimit = 3;
+            
+            // 在绘制频谱时，先绘制外部发光效果，增强边缘光晕
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.shadowBlur = 20; // 增加模糊半径
+            ctx.shadowColor = rgba(colorScheme.dark, 0.9);
+    
+            for (let i = 0; i < numVisualBars; i++) {
+                const currentA = pointsA[i];
+                const nextA = pointsA[(i + 1) % numVisualBars]; 
+                const currentB = pointsB[i];
+                const nextB = pointsB[(i + 1) % numVisualBars];
+
+                ctx.beginPath();
+                ctx.moveTo(currentA.x, currentA.y);
+                ctx.lineTo(nextA.x, nextA.y);   
+                ctx.lineTo(nextB.x, nextB.y);   
+                ctx.lineTo(currentB.x, currentB.y); 
+                ctx.closePath(); 
+
+                const rawNormalizedValue = currentA.originalNormalizedValue;
+                // 增强外缘光晕效果
+                ctx.strokeStyle = rgba(colorScheme.core, 0.5 + rawNormalizedValue * 0.5);
+                ctx.lineWidth = 2.5; // 稍微增加线宽
+                ctx.stroke();
+            }
+            
+            // 再绘制白色线条核心
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = rgba(colorScheme.glow, 0.8);
+            ctx.lineWidth = 1.2;
+            
+            for (let i = 0; i < numVisualBars; i++) {
+                const currentA = pointsA[i];
+                const nextA = pointsA[(i + 1) % numVisualBars]; 
+                const currentB = pointsB[i];
+                const nextB = pointsB[(i + 1) % numVisualBars];
+
+                ctx.beginPath();
+                ctx.moveTo(currentA.x, currentA.y);
+                ctx.lineTo(nextA.x, nextA.y);   
+                ctx.lineTo(nextB.x, nextB.y);   
+                ctx.lineTo(currentB.x, currentB.y); 
+                ctx.closePath(); 
+
+                const rawNormalizedValue = currentA.originalNormalizedValue;
+                // 清晰的白色线条 - 改用point颜色(纯白)或line颜色(接近白)
+                ctx.strokeStyle = rgba(colorScheme.point, 0.8 + rawNormalizedValue * 0.2);
+                ctx.stroke();
+            }
+            
+            // --- 强调顶点 (改进光晕效果) ---
+            const pointRadiusBase = 0.75; // 缩小到原来的一半
+            const originalValueThreshold = 8;
+
+            ctx.globalCompositeOperation = 'lighter';
+
+            // 绘制外圈点 - 更柔和透明的大范围光晕
+            for (let i = 0; i < numVisualBars; i++) {
+                const rawNormA = pointsA[i].originalNormalizedValue;
+                if (rawNormA * 255 > originalValueThreshold) {
+                    // 1. 更大范围的极柔和光晕
+                    const largeGlowRadius = pointRadiusBase * 30 + rawNormA * 40; // 进一步扩大光晕半径
+                    const glow = ctx.createRadialGradient(
+                        pointsA[i].x, pointsA[i].y, 0,
+                        pointsA[i].x, pointsA[i].y, largeGlowRadius
+                    );
+                    // 更透明、更柔和的光晕过渡
+                    glow.addColorStop(0, rgba(colorScheme.point, 0.6));  // 降低中心不透明度
+                    glow.addColorStop(0.05, rgba(colorScheme.highlight, 0.4)); // 更快的初始过渡
+                    glow.addColorStop(0.2, rgba(colorScheme.core, 0.15));     // 更透明
+                    glow.addColorStop(0.5, rgba(colorScheme.core, 0.06));     // 非常透明
+                    glow.addColorStop(1, rgba(colorScheme.dark, 0));          // 完全透明
+                    
+                    ctx.beginPath();
+                    ctx.arc(pointsA[i].x, pointsA[i].y, largeGlowRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = glow;
+                    ctx.fill();
+                    
+                    // 2. 缩小的白色光点核心
+                    ctx.shadowBlur = 4; // 减小阴影模糊
+                    ctx.shadowColor = rgba(colorScheme.point, 0.7); // 更透明的阴影
+                    
+                    ctx.beginPath();
+                    ctx.arc(pointsA[i].x, pointsA[i].y, pointRadiusBase, 0, Math.PI * 2);
+                    ctx.fillStyle = rgba(colorScheme.point, 0.9); // 略微降低不透明度
+                    ctx.fill();
+                }
+            }
+            
+            // 内圈点也同样处理
+            for (let i = 0; i < numVisualBars; i++) {
+                const rawNormB = pointsB[i].originalNormalizedValue;
+                if (rawNormB * 255 > originalValueThreshold) {
+                    // 光晕 - 同样更大更柔和
+                    const glowRadius = pointRadiusBase * 20 + rawNormB * 24; // 更大的光晕
+                    const glow = ctx.createRadialGradient(
+                        pointsB[i].x, pointsB[i].y, 0,
+                        pointsB[i].x, pointsB[i].y, glowRadius
+                    );
+                    // 更透明、更柔和的过渡
+                    glow.addColorStop(0, rgba(colorScheme.point, 0.5));
+                    glow.addColorStop(0.1, rgba(colorScheme.highlight, 0.3));
+                    glow.addColorStop(0.3, rgba(colorScheme.core, 0.12));
+                    glow.addColorStop(0.7, rgba(colorScheme.core, 0.05));
+                    glow.addColorStop(1, rgba(colorScheme.darker, 0));
+                    
+                    ctx.beginPath();
+                    ctx.arc(pointsB[i].x, pointsB[i].y, glowRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = glow;
+                    ctx.fill();
+                    
+                    // 核心 - 同样缩小
+                    ctx.shadowBlur = 3; // 更小的阴影模糊
+                    ctx.shadowColor = rgba(colorScheme.point, 0.6); // 更透明的阴影
+                    
+                    ctx.beginPath();
+                    ctx.arc(pointsB[i].x, pointsB[i].y, pointRadiusBase * 0.4, 0, Math.PI * 2); // 更小的核心
+                    ctx.fillStyle = rgba(colorScheme.point, 0.85); // 略微降低不透明度
+                    ctx.fill();
+                }
+            }
+            
+            // 恢复默认设置
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+
+            // --- 粒子效果 (修改颜色以匹配) ---
+            if (peakValue > 180 && particles.length < MAX_PARTICLES && Math.random() < 0.3) { // 当有强峰值时生成粒子
+                 // 从中心或频谱边缘生成粒子
+                const spawnAngle = Math.random() * Math.PI * 2;
+                const spawnRadius = baseRadius * (Math.random() * 0.5 + 0.8); // 在频谱附近
+                const particleX = centerX + spawnRadius * Math.cos(spawnAngle);
+                const particleY = centerY + spawnRadius * Math.sin(spawnAngle);
+                particles.push(createParticle(particleX, particleY, 5 + peakValue / 255 * 10, null, peakValue/255 * 1.5));
+            }
+            updateAndDrawParticles();
+        }
+
+        // 页面加载后自动开始
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('页面加载完成，音频可视化准备就绪');
+            
+            // 初始化全局变量，用于跟踪失败重试
+            window.recentFailedMusic = '';
+            window.recentFailedCount = 0;
+            window.lastFetchTime = 0;
+            
+            // 检查URL是否包含-test参数
+            if(window.location.href.includes('-test')) {
+                // 显示控制区域
+                document.getElementById('controls').style.display = 'flex';
+            }
+            
+            // 延迟一点初始获取，确保页面完全加载
+            setTimeout(() => {
+                fetchCurrentMusic();
+                // 设置定时获取，间隔更长以避免频繁请求
+                setInterval(fetchCurrentMusic, 10000); // 改为每10秒检查一次
+            }, 2000);
+        });
+        
+        // 修改全局播放函数也检查测试模式
+        window.playVisualizerMusic = function(musicPath) {
+            loadAndPlayMusic(musicPath);
+            
+            // 只在测试模式下显示状态信息
+            if(window.location.href.includes('-test')) {
+                statusInfo.textContent = `手动播放: ${musicPath.split('/').pop()}`;
+                statusInfo.style.display = 'block';
+            }
+        };
+    </script>
+</body>
+</html>

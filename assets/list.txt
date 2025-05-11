@@ -1,0 +1,23 @@
+assets/
+├── icons/                # 图标文件夹
+│   ├── actions/         # 操作相关图标
+│   │   ├── add.png     # 添加
+│   │   ├── delete.png  # 删除
+│   │   ├── edit.png    # 编辑
+│   │   ├── move.png    # 移动
+│   │   ├── play.png    # 播放
+│   │   └── search.png  # 搜索
+│   │
+│   ├── status/          # 状态相关图标
+│   │   ├── loading.gif  # 加载动画
+│   │   ├── error.png   # 错误提示
+│   │   └── success.png # 成功提示
+│   │
+│   └── playlists/       # 歌单相关图标
+│       ├── folder.png   # 文件夹
+│       ├── music.png    # 音乐文件
+│       └── playlist.png # 播放列表
+│
+└── images/              # 其他图片资源
+    ├── logo.png        # 应用logo
+    └── background.png  # 背景图片

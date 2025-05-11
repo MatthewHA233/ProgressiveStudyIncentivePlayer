@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>音乐与壁纸信息</title>
+    <style>
+        @font-face {
+            font-family: 'MiSans';
+            src: url('./border_assets/MiSans-Regular.ttf');
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 1920px;
+            height: 1080px;
+            background-color: transparent;
+            font-family: 'MiSans', '微软雅黑', sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .info-container {
+            position: absolute;
+            bottom: 5px; /* 位置下移 */
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 290px 0 170px;
+        }
+        
+        /* 修改底部信息框样式，使用白色背景 */
+        .info-box {
+            width: 500px;
+            height: 130px; /* 增加高度 */
+            background-color: rgba(255, 255, 255, 0.65); /* 增加透明度 */
+            border-radius: 12px;
+            padding: 15px 20px;
+            color: #333; /* 改为深色文字 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        
+        .music-info {
+            border-left: 5px solid #E74C3C;
+        }
+        
+        .wallpaper-info {
+            border-left: 5px solid #3458db;
+        }
+        
+        /* 学习信息浮窗样式 - 猫耳风格 */
+        .study-info {
+            position: absolute;
+            top: 300px; /* 调整位置到233娘下方 */
+            right: 10px; /* 确保在右侧 */
+            width: 260px; /* 增加宽度以适应更大字体 */
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 15px; /* 内边距 */
+            color: #333;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            z-index: 100; /* 确保显示在最上层 */
+        }
+        
+        /* 猫耳装饰 */
+        .study-info:before, .study-info:after {
+            content: "";
+            position: absolute;
+            top: -15px;
+            width: 30px;
+            height: 30px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 50% 50% 0 0;
+            z-index: -1;
+        }
+        
+        .study-info:before {
+            left: 20px;
+            transform: rotate(-30deg);
+        }
+        
+        .study-info:after {
+            right: 20px;
+            transform: rotate(30deg);
+        }
+        
+        .study-info-title {
+            font-size: 26px; /* 进一步增大标题字体 */
+            font-weight: 900; /* 加粗 */
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+            border-bottom: 2px dashed #ccc;
+            padding-bottom: 8px;
+            font-family: monospace;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        
+        .study-info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px; /* 间距 */
+            font-size: 20px; /* 进一步增大字体 */
+        }
+        
+        .study-info-label {
+            color: #555; /* 加深颜色 */
+            font-weight: 700; /* 加粗 */
+        }
+        
+        .study-info-value {
+            font-weight: 900; /* 更加粗 */
+            color: #222; /* 加深颜色 */
+        }
+        
+        .level-value {
+            font-weight: 900; /* 更加粗 */
+            display: block;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 24px; /* 进一步增大级别字体 */
+            padding: 3px 0;
+            border-radius: 4px;
+            background-color: rgba(255, 0, 0, 0.8); /* 添加红色背景 */
+        }
+        
+        /* 标题行样式 */
+        .title-header, .title-row, .artist-row, .wallpaper-name-row, .wallpaper-id-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px; /* 增加间距 */
+            height: 32px;
+            position: relative;
+        }
+        
+        .box-title {
+            font-size: 24px; /* 增大字体 */
+            font-weight: 900; /* 加粗 */
+            color: #333; /* 改为深色 */
+        }
+        
+        .music-info .box-title {
+            color: #E74C3C;
+        }
+        
+        .wallpaper-info .box-title {
+            color: #3458db;
+        }
+        
+        .title-container, .artist-container, .wallpaper-name-container, .wallpaper-id-container {
+            position: relative;
+            overflow: hidden;
+            height: 32px;
+            white-space: nowrap;
+            flex-grow: 1;
+            max-width: 100%;
+        }
+        
+        .source-container, .level-container {
+            height: 32px;
+            white-space: nowrap;
+            text-align: right;
+            margin-left: 10px;
+            flex-shrink: 0;
+        }
+        
+        .title, .artist, .wallpaper-name, .wallpaper-id {
+            position: absolute;
+            left: 0;
+            font-size: 24px;
+            line-height: 32px;
+            font-weight: 700; /* 加粗 */
+        }
+        
+        .title {
+            color: #222; /* 改为深色 */
+            font-weight: 900; /* 更加粗 */
+            font-size: 26px; /* 增大字体 */
+        }
+        
+        .artist {
+            color: #555; /* 改为深灰色 */
+            font-size: 22px;
+            font-weight: 700; /* 加粗 */
+        }
+        
+        .wallpaper-name {
+            color: #222; /* 改为深色 */
+            font-weight: 900; /* 更加粗 */
+            font-size: 26px; /* 增大字体 */
+        }
+        
+        .wallpaper-id {
+            color: #555; /* 改为深灰色 */
+            font-size: 22px;
+            font-weight: 700; /* 加粗 */
+        }
+        
+        /* 添加图标样式 */
+        .app-icon {
+            position: absolute;
+            width: 48px;
+            height: 48px;
+            bottom: 15px;
+            right: 15px;
+            opacity: 0.9; /* 增加不透明度 */
+        }
+        
+        /* 来源和阶段信息样式 */
+        .source-text {
+            font-size: 20px;
+            font-weight: bold;
+            color: #E74C3C; /* 使用纯色 */
+            display: inline-block;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        
+        .level-text {
+            font-size: 20px;
+            font-weight: bold;
+            display: inline-block;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            background-color: rgba(52, 88, 219, 0.8); /* 添加蓝色背景 */
+            padding: 2px 6px; /* 添加内边距使背景更明显 */
+            border-radius: 4px; /* 圆角边框 */
+        }
+        
+        /* 定义不同级别的颜色 */
+        .level-c {
+            color: rgb(192, 192, 192);
+            text-shadow: 0 0 5px rgba(192, 192, 192, 0.8);
+        }
+        
+        .level-cc {
+            color: rgb(0, 200, 255);
+            text-shadow: 0 0 5px rgba(0, 200, 255, 0.8);
+        }
+        
+        .level-ccc {
+            color: rgb(128, 128, 255);
+            text-shadow: 0 0 5px rgba(128, 128, 255, 0.8);
+        }
+        
+        .level-b {
+            color: rgb(247, 123, 0);
+            text-shadow: 0 0 5px rgba(247, 123, 0, 0.8);
+        }
+        
+        .level-bb {
+            color: rgb(255, 255, 0);
+            text-shadow: 0 0 5px rgba(255, 255, 0, 0.8);
+        }
+        
+        .level-bbb {
+            color: rgb(255, 69, 0);
+            text-shadow: 0 0 5px rgba(255, 69, 0, 0.8);
+        }
+        
+        .level-a {
+            color: rgb(219, 36, 36);
+            text-shadow: 0 0 5px rgba(219, 36, 36, 0.8);
+        }
+        
+        .level-aa {
+            color: rgb(255, 20, 147);
+            text-shadow: 0 0 5px rgba(255, 20, 147, 0.8);
+        }
+        
+        .level-aaa {
+            color: rgb(255, 242, 0);
+            text-shadow: 0 0 5px rgba(255, 242, 0, 0.8);
+        }
+        
+        .level-s {
+            color: rgb(255, 0, 0);
+            text-shadow: 0 0 5px rgba(255, 0, 0, 0.8);
+        }
+        
+        .level-ss {
+            color: rgb(0, 255, 255);
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.8);
+        }
+        
+        .level-sss {
+            color: rgb(255, 255, 128);
+            text-shadow: 0 0 5px rgba(255, 255, 128, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <!-- 学习信息浮窗 - 猫耳风格 -->
+    <div class="study-info" id="study-info">
+        <div class="study-info-title">
+            = STUDY DATA =
+        </div>
+        <div class="study-info-item">
+            <span class="study-info-label">当前时长:</span>
+            <span class="study-info-value" id="study-time">加载中...</span>
+        </div>
+        <div class="study-info-item">
+            <span class="study-info-label">目标时长:</span>
+            <span class="study-info-value" id="target-time">加载中...</span>
+        </div>
+        <div class="study-info-item">
+            <span class="study-info-label">预测时长:</span>
+            <span class="study-info-value" id="predicted-time">加载中...</span>
+        </div>
+        <div class="study-info-item">
+            <span class="study-info-label">剩余时间:</span>
+            <span class="study-info-value" id="remaining-time">加载中...</span>
+        </div>
+        <div class="level-value" id="level-value"></div>
+    </div>
+
+    <div class="info-container">
+        <!-- 音乐信息 -->
+        <div class="info-box music-info">
+            <div class="title-header">
+                <div class="box-title">音乐名称</div>
+                <div class="source-container">
+                    <div class="source-text" id="music-source"></div>
+                </div>
+            </div>
+            <div class="title-row">
+                <div class="title-container">
+                    <div class="title" id="music-title">等待加载音乐信息...</div>
+                </div>
+            </div>
+            <div class="artist-row">
+                <div class="artist-container">
+                    <div class="artist" id="music-artist"></div>
+                </div>
+            </div>
+            <!-- 添加网易云音乐图标 -->
+            <img src="./border_assets/NetEaseCloudMusic_48×48.png" alt="网易云音乐" class="app-icon">
+        </div>
+        
+        <!-- 壁纸信息 -->
+        <div class="info-box wallpaper-info">
+            <div class="title-header">
+                <div class="box-title">壁纸引擎名称</div>
+                <div class="level-container">
+                    <div class="level-text" id="wallpaper-level"></div>
+                </div>
+            </div>
+            <div class="wallpaper-name-row">
+                <div class="wallpaper-name-container">
+                    <div class="wallpaper-name" id="wallpaper-name">等待加载壁纸信息...</div>
+                </div>
+            </div>
+            <div class="wallpaper-id-row">
+                <div class="wallpaper-id-container">
+                    <div class="wallpaper-id" id="wallpaper-id"></div>
+                </div>
+            </div>
+            <!-- 添加壁纸引擎图标 -->
+            <img src="./border_assets/WallpaperEngine_48x48.png" alt="壁纸引擎" class="app-icon">
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let lastMusicName = '';
+        let playingStartTime = 0;
+        let musicDuration = 0;
+        let isPlaying = false;
+        let scrollIntervals = {};
+        
+        // 滚动文本相关配置
+        const SCROLL_SPEED = 30; // 滚动速度（毫秒）
+        const SCROLL_PAUSE_START = 3000; // 开始滚动前暂停时间（毫秒）
+        const SCROLL_PAUSE_END = 1500; // 滚动到末尾后暂停时间（毫秒）
+        
+        // 级别颜色映射
+        const LEVEL_CLASSES = {
+            'C': 'level-c',
+            'CC': 'level-cc',
+            'CCC': 'level-ccc',
+            'B': 'level-b',
+            'BB': 'level-bb',
+            'BBB': 'level-bbb',
+            'A': 'level-a',
+            'AA': 'level-aa',
+            'AAA': 'level-aaa',
+            'S': 'level-s',
+            'SS': 'level-ss',
+            'SSS': 'level-sss'
+        };
+        
+        /**
+         * 获取级别的CSS类名
+         * @param {string} levelText - 级别文本
+         * @returns {string} CSS类名
+         */
+        function getLevelClass(levelText) {
+            // 提取级别前缀（如 "AAA", "BB", "C" 等）
+            const levelMatch = levelText.match(/^『?([A-Z]+)/);
+            if (levelMatch && levelMatch[1]) {
+                const levelPrefix = levelMatch[1];
+                return LEVEL_CLASSES[levelPrefix] || '';
+            }
+            return '';
+        }
+        
+        /**
+         * 清理级别文本，移除『』和前缀
+         * @param {string} levelText - 原始级别文本
+         * @returns {string} 清理后的文本
+         */
+        function cleanLevelText(levelText) {
+            // 移除『』符号和可能的"阶段:"前缀
+            return levelText.replace(/^『|』$|阶段:\s*/g, '');
+        }
+        
+        /**
+         * 初始化滚动文本
+         * @param {string} elementId - 元素ID
+         * @param {string} containerId - 容器ID
+         */
+        function initScrollText(elementId, containerId) {
+            const element = document.getElementById(elementId);
+            const container = document.getElementById(containerId)?.parentElement;
+            
+            if (!element || !container) return;
+            
+            // 检查是否需要滚动
+            const needScroll = element.offsetWidth > container.offsetWidth;
+            
+            // 如果已经有滚动间隔，先清除
+            if (scrollIntervals[elementId]) {
+                clearInterval(scrollIntervals[elementId]);
+                scrollIntervals[elementId] = null;
+            }
+            
+            // 重置位置
+            element.style.left = '0px';
+            
+            // 如果需要滚动，设置滚动
+            if (needScroll) {
+                let scrollPosition = 0;
+                let direction = -1; // -1 向左, 1 向右
+                let isPaused = true;
+                let pauseTimeout = null;
+                
+                // 设置初始暂停
+                pauseTimeout = setTimeout(() => {
+                    isPaused = false;
+                }, SCROLL_PAUSE_START);
+                
+                // 创建滚动间隔
+                scrollIntervals[elementId] = setInterval(() => {
+                    if (isPaused) return;
+                    
+                    // 计算最大滚动距离
+                    const maxScroll = element.offsetWidth - container.offsetWidth;
+                    
+                    // 更新滚动位置
+                    scrollPosition += direction;
+                    
+                    // 检查是否到达边界
+                    if (scrollPosition <= -maxScroll || scrollPosition >= 0) {
+                        // 到达边界，暂停
+                        isPaused = true;
+                        
+                        // 设置暂停后的动作
+                        pauseTimeout = setTimeout(() => {
+                            // 改变方向
+                            direction *= -1;
+                            isPaused = false;
+                        }, SCROLL_PAUSE_END);
+                    }
+                    
+                    // 应用滚动位置
+                    element.style.left = `${scrollPosition}px`;
+                }, SCROLL_SPEED);
+            }
+        }
+        
+        /**
+         * 解析音乐名称
+         * @param {string} musicName - 音乐文件名
+         * @returns {Object} 包含标题和艺术家的对象
+         */
+        function parseMusicName(musicName) {
+            // 移除.mp3扩展名
+            let name = musicName.replace(/\.(mp3|flac)$/, '');
+            
+            // 分割艺术家和标题
+            let artist = '';
+            let title = name;
+            
+            if (name.includes(' - ')) {
+                const parts = name.split(' - ');
+                artist = parts[0];
+                title = parts.slice(1).join(' - ');
+            }
+            
+            return { title, artist };
+        }
+        
+        /**
+         * 格式化时间（分:秒）
+         * @param {string} durationStr - 时长字符串 (MM:SS)
+         * @returns {number} 总秒数
+         */
+        function parseDuration(durationStr) {
+            const parts = durationStr.split(':');
+            if (parts.length === 2) {
+                return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+            }
+            return 0;
+        }
+        
+        /**
+         * 更新音乐播放状态
+         */
+        function updateMusicPlayingStatus() {
+            if (!isPlaying) return;
+            
+            const now = Date.now();
+            const elapsedSeconds = (now - playingStartTime) / 1000;
+            
+            const musicTitle = document.getElementById('music-title');
+            const { title } = parseMusicName(lastMusicName);
+            
+            if (elapsedSeconds < musicDuration) {
+                // 正在播放 - 不再显示播放指示器
+                musicTitle.textContent = title;
+            } else {
+                // 已播放完成
+                musicTitle.textContent = `${title} (已播放)`;
+                isPlaying = false;
+            }
+        }
+        
+        /**
+         * 获取并更新艺术品信息
+         */
+        async function fetchArtworkInfo() {
+            try {
+                // 添加时间戳防止缓存
+                const timestamp = Date.now();
+                const response = await fetch(`./artwork_display_info.json?t=${timestamp}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // 更新壁纸信息
+                const wallpaperName = document.getElementById('wallpaper-name');
+                const wallpaperId = document.getElementById('wallpaper-id');
+                
+                // 设置壁纸名称和ID
+                wallpaperName.textContent = data.wallpaper_name || '未知壁纸';
+                wallpaperId.textContent = `ID: ${data.wallpaper_id || '未知'}`;
+                
+                // 设置作品来源
+                const musicSource = document.getElementById('music-source');
+                if (data.artwork_source) {
+                    musicSource.textContent = `来源: ${data.artwork_source}`;
+                    musicSource.style.display = 'inline-block';
+                } else {
+                    musicSource.style.display = 'none';
+                }
+                
+                // 初始化壁纸名称滚动
+                initScrollText('wallpaper-name', 'wallpaper-name');
+                initScrollText('wallpaper-id', 'wallpaper-id');
+                
+                // 检查音乐是否变化
+                if (data.music_name && data.music_name !== lastMusicName) {
+                    // 音乐已更改，更新信息
+                    lastMusicName = data.music_name;
+                    const { title, artist } = parseMusicName(data.music_name);
+                    
+                    const musicTitle = document.getElementById('music-title');
+                    const musicArtist = document.getElementById('music-artist');
+                    
+                    // 设置音乐标题和艺术家
+                    musicTitle.textContent = title;
+                    musicArtist.textContent = artist;
+                    
+                    // 初始化音乐标题滚动
+                    initScrollText('music-title', 'music-title');
+                    initScrollText('music-artist', 'music-artist');
+                    
+                    // 重置播放状态
+                    playingStartTime = Date.now();
+                    musicDuration = parseDuration(data.music_duration || '0:00');
+                    isPlaying = true;
+                }
+                
+                // 更新音乐播放状态
+                updateMusicPlayingStatus();
+                
+            } catch (error) {
+                console.error('获取艺术品信息失败:', error);
+            }
+        }
+        
+        /**
+         * 获取并更新学习信息
+         */
+        async function fetchStudyInfo() {
+            try {
+                // 添加时间戳防止缓存
+                const timestamp = Date.now();
+                const response = await fetch(`./floating_button_data.json?t=${timestamp}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // 更新学习信息
+                document.getElementById('study-time').textContent = data.study_time || '未知';
+                document.getElementById('target-time').textContent = data.target_time || '未知';
+                document.getElementById('predicted-time').textContent = data.predicted_time || '未知';
+                document.getElementById('remaining-time').textContent = data.remaining_time || '未知';
+                
+                // 更新阶段信息
+                if (data.current_level) {
+                    const levelElement = document.getElementById('level-value');
+                    const wallpaperLevel = document.getElementById('wallpaper-level');
+                    
+                    // 清理级别文本，移除『』符号
+                    const cleanedLevel = cleanLevelText(data.current_level);
+                    
+                    // 设置级别文本
+                    levelElement.textContent = cleanedLevel;
+                    wallpaperLevel.textContent = cleanedLevel;
+                    
+                    // 设置级别对应的CSS类
+                    const levelClass = getLevelClass(data.current_level);
+                    levelElement.className = 'level-value ' + levelClass;
+                    wallpaperLevel.className = 'level-text ' + levelClass;
+                    
+                    wallpaperLevel.style.display = 'inline-block';
+                } else {
+                    document.getElementById('level-value').textContent = '未知';
+                    document.getElementById('wallpaper-level').style.display = 'none';
+                }
+                
+            } catch (error) {
+                console.error('获取学习信息失败:', error);
+            }
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            // 立即获取信息
+            fetchArtworkInfo();
+            fetchStudyInfo();
+            
+            // 设置定时获取
+            setInterval(fetchArtworkInfo, 5000);
+            setInterval(fetchStudyInfo, 5000);
+            
+            // 设置更频繁的播放状态更新
+            setInterval(updateMusicPlayingStatus, 1000);
+        });
+    </script>
+</body>
+</html> 

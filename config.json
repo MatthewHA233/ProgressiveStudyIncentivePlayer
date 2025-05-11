@@ -1,0 +1,101 @@
+{
+    "font": "楷体",
+    "half_hour_effect": "music_library\\音效\\青木森一,佐藤仁美 - きのみを手に入れた!.mp3",
+    "level_up_effect": "music_library\\音效\\足立美奈子 - ジムミッション クリア!!.mp3",
+    "five_minute_effect": "music_library\\音效\\叮-清脆风铃声_R.mp3",
+    "levels": [
+        {
+            "name": "C 理想、进取",
+            "start": 0.0,
+            "end": 1.5,
+            "random_count": 3,
+            "color": "rgba(192,192,192,0.4)"
+        },
+        {
+            "name": "CC 梦想、梦境",
+            "start": 1.5,
+            "end": 3.0,
+            "random_count": 3,
+            "color": "rgba(0,200,255,0.4)"
+        },
+        {
+            "name": "CCC 感伤、坚毅",
+            "start": 3.0,
+            "end": 4.5,
+            "random_count": 3,
+            "color": "rgba(128,128,255,0.4)"
+        },
+        {
+            "name": "B 意志、我的回合",
+            "start": 4.5,
+            "end": 6.0,
+            "random_count": 3,
+            "color": "rgba(247,123,0,0.4)"
+        },
+        {
+            "name": "BB 长途跋涉、星辰",
+            "start": 6.0,
+            "end": 7.5,
+            "random_count": 3,
+            "color": "rgba(255,255,0,0.4)"
+        },
+        {
+            "name": "BBB 悲壮、地狱",
+            "start": 7.5,
+            "end": 9.0,
+            "random_count": 3,
+            "color": "rgba(255,69,0,0.4)"
+        },
+        {
+            "name": "A 觉醒、贯行",
+            "start": 9.0,
+            "end": 10.5,
+            "random_count": 3,
+            "color": "rgba(219,36,36,0.4)"
+        },
+        {
+            "name": "AA 英雄之旅、怒斥",
+            "start": 10.5,
+            "end": 12.0,
+            "random_count": 3,
+            "color": "rgba(255, 20, 147, 0.4)"
+        },
+        {
+            "name": "AAA 全力以赴、神迹",
+            "start": 12.0,
+            "end": 13.0,
+            "random_count": 2,
+            "color": "rgba(255,242,0,0.4)"
+        },
+        {
+            "name": "S 宝可梦爆燃OP",
+            "start": 13.0,
+            "end": 13.5,
+            "random_count": 1,
+            "color": "rgba(255,0,0,0.4)"
+        },
+        {
+            "name": "SS 友情啊羁绊啊",
+            "start": 13.5,
+            "end": 14.0,
+            "random_count": 1,
+            "color": "rgba(0,255,255,0.4)"
+        },
+        {
+            "name": "SSS 目标是宝可梦大师！",
+            "start": 14.0,
+            "end": 14.5,
+            "random_count": 1,
+            "color": "rgba(255,255,128,0.4)"
+        }
+    ],
+    "recent_fonts": [
+        "楷体",
+        "方正姚体",
+        "微软雅黑",
+        "仿宋"
+    ],
+    "start_date": "2025-04-28",
+    "excel_path": "E:/人工智能/渐进学习时长激励播放器/昼夜表/2025年程序学习",
+    "template_path": "E:/人工智能/渐进学习时长激励播放器/昼夜表/模板/昼夜表模板(2025年开发学习专供).xls"
+}
