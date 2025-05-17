@@ -173,9 +173,13 @@ class PointMarkTool(ctk.CTkToplevel):
     def on_mouse_move(self, event):
         """处理鼠标移动事件，显示当前坐标"""
         if hasattr(self, 'display_img'):
-            x, y = event.x, event.y
-            real_x = int(x / self.scale)
-            real_y = int(y / self.scale)
+            # 将事件坐标（相对于画布可见区域）转换为画布坐标（相对于画布内容）
+            canvas_x = self.canvas.canvasx(event.x)
+            canvas_y = self.canvas.canvasy(event.y)
+            
+            # 计算实际坐标（考虑缩放）
+            real_x = int(canvas_x / self.scale)
+            real_y = int(canvas_y / self.scale)
             self.coord_label.configure(text=f"坐标: ({real_x}, {real_y})")
     
     def clear_markers(self):
@@ -316,21 +320,22 @@ class PointMarkTool(ctk.CTkToplevel):
         if not hasattr(self, 'display_img'):
             return
         
-        # 获取点击位置
-        x, y = event.x, event.y
+        # 获取点击位置（相对于画布可见区域），并转换为画布坐标（相对于画布内容）
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
         
         # 计算实际坐标（考虑缩放）
-        real_x = int(x / self.scale)
-        real_y = int(y / self.scale)
+        real_x = int(canvas_x / self.scale)
+        real_y = int(canvas_y / self.scale)
         
         # 更新坐标显示
         self.coord_label.configure(text=f"坐标: ({real_x}, {real_y})")
         
         # 添加到标记列表
-        self.markers.append((x, y, real_x, real_y))
+        self.markers.append((canvas_x, canvas_y, real_x, real_y))
         
         # 在Canvas上绘制标记
-        self._draw_marker(x, y, real_x, real_y)
+        self._draw_marker(canvas_x, canvas_y, real_x, real_y)
         
         # 弹出确认对话框
         if messagebox.askyesno("确认", f"是否使用坐标 ({real_x}, {real_y})？"):
