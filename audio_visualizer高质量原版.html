@@ -165,8 +165,8 @@
         const MAX_MUSIC_LOAD_RETRIES = 3;
 
         const particles = []; // 存放粒子对象的数组
-        const MAX_PARTICLES = 25; // 最大粒子数量 - 从50减少到25
-        const PARTICLE_LIFETIME = 80; // 粒子生命周期（帧数） - 可以适当减少
+        const MAX_PARTICLES = 50; // 最大粒子数量
+        const PARTICLE_LIFETIME = 100; // 粒子生命周期（帧数）
 
         // 设置canvas大小
         function resizeCanvas() {
@@ -236,22 +236,28 @@
             songTitle.textContent = title;
             
             // 更大的字体大小变化范围
-            const size = songTitleSize + (intensity * 50); // 稍微减小变化范围
+            const size = songTitleSize + (intensity * 60); // 极大的变化范围
             songTitle.style.fontSize = `${size}px`;
             
-            // 简化光晕效果 - 减少层数和模糊
-            const glowSizeBase = 20 + (intensity * 60); // 调整基础光晕大小
-            const glowIntensity = Math.min(1, 0.6 + intensity * 0.4); // 调整光晕强度
+            // 超强光晕效果 - 至少当前的3倍
+            const glowSize = 40 + (intensity * 100); // 极大的光晕基础值和变化范围
+            const glowIntensity = Math.min(1, 0.5 + intensity * 0.5);
             
+            // 使用核心颜色作为发光效果，但增加强度
             const r = coreColorR || 100;
             const g = coreColorG || 200;
             const b = coreColorB || 255;
             
-            // 显著减少 text-shadow 层数和模糊度
+            // 多层次的极强光晕效果
             songTitle.style.textShadow = `
-                0 0 ${glowSizeBase*0.3}px rgba(255, 255, 255, 0.9),
-                0 0 ${glowSizeBase*0.6}px rgba(${r}, ${g}, ${b}, ${glowIntensity * 0.8}),
-                0 0 ${glowSizeBase}px rgba(${r}, ${g}, ${b}, ${glowIntensity * 0.6})
+                0 0 ${glowSize*0.2}px rgba(255, 255, 255, 1),
+                0 0 ${glowSize*0.4}px rgba(255, 255, 255, ${glowIntensity}),
+                0 0 ${glowSize*0.6}px rgba(${r}, ${g}, ${b}, ${glowIntensity}),
+                0 0 ${glowSize*0.8}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.9}),
+                0 0 ${glowSize}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.8}),
+                0 0 ${glowSize*1.5}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.7}),
+                0 0 ${glowSize*2}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.6}),
+                0 0 ${glowSize*3}px rgba(${r}, ${g}, ${b}, ${glowIntensity*0.5})
             `;
             
             // 保持背景透明
@@ -310,7 +316,7 @@
         function initAudio() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
-            analyser.fftSize = 1024; // 从 2048 降低到 1024
+            analyser.fftSize = 2048;
             analyser.smoothingTimeConstant = 0.75;
             
             gainNode = audioContext.createGain();
@@ -758,17 +764,17 @@
 
         function createParticle(x, y, size, color, speedMultiplier = 1) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = (Math.random() * 1.5 + 0.5) * speedMultiplier; // 减小速度范围
+            const speed = (Math.random() * 2 + 1) * speedMultiplier;
             return {
                 x,
                 y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                size: Math.random() * size * 0.8 + size * 0.5, // 减小尺寸范围
-                color: color || `rgba(${colorScheme.highlight.r}, ${colorScheme.highlight.g}, ${colorScheme.highlight.b}, ${Math.random() * 0.3 + 0.5})`, // 使用主题色
+                size: Math.random() * size + size,
+                color: color || `rgba(255, 255, 255, ${Math.random() * 0.2 + 0.8})`,
                 life: PARTICLE_LIFETIME,
-                // rotation: Math.random() * Math.PI * 2, // 移除旋转
-                // rotationSpeed: (Math.random() - 0.5) * 0.1 // 移除旋转
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
             };
         }
 
@@ -778,7 +784,7 @@
                 p.x += p.vx;
                 p.y += p.vy;
                 p.life--;
-                // p.rotation += p.rotationSpeed; // 移除旋转更新
+                p.rotation += p.rotationSpeed;
 
                 if (p.life <= 0) {
                     particles.splice(i, 1);
@@ -786,27 +792,66 @@
                 }
 
                 ctx.save();
-                ctx.globalAlpha = p.life / PARTICLE_LIFETIME; // 根据生命周期调整透明度
-
-                // 简化为圆形粒子，带简单光晕
-                const particleRadius = p.size / 2;
-
-                // 绘制光晕 (使用shadowBlur)
-                ctx.shadowBlur = particleRadius * 2.5; // 调整光晕大小
-                ctx.shadowColor = p.color; // 使用粒子自身颜色作为光晕
-
-                // 绘制粒子核心
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+                
+                // 使用与参考图一致的三角形风格：三个点三个线，白线蓝光晕
+                const triangleSize = p.size * 1.8; // 更大一些
+                const halfSize = triangleSize / 2;
+                
+                // 三个点的位置
+                const points = [
+                    {x: 0, y: -halfSize},          // 顶点
+                    {x: halfSize, y: halfSize},    // 右下
+                    {x: -halfSize, y: halfSize}    // 左下
+                ];
+                
+                // 1. 绘制强烈的蓝色光晕 (没有填充色)
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.shadowBlur = triangleSize * 1.5;
+                ctx.shadowColor = rgba(colorScheme.intense, p.life / PARTICLE_LIFETIME * 0.9);
+                
+                // 2. 绘制白色线框
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, particleRadius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, 0.8)`; // 粒子核心用较亮的颜色
-                ctx.fill();
+                // 绘制三角形轮廓 (三条线)
+                ctx.moveTo(points[0].x, points[0].y);
+                ctx.lineTo(points[1].x, points[1].y);
+                ctx.lineTo(points[2].x, points[2].y);
+                ctx.closePath();
+                
+                // 更明显的白色线条
+                ctx.strokeStyle = rgba(colorScheme.point, p.life / PARTICLE_LIFETIME * 0.95);
+                ctx.lineWidth = 1.8; // 稍微粗一点的线
+                ctx.stroke();
+                
+                // 3. 在三个顶点绘制更大的光点
+                const pointRadius = 2.5; // 增大端点尺寸
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = rgba(colorScheme.mid, 0.9);
+                
+                for (let j = 0; j < 3; j++) {
+                    // 先绘制光晕
+                    ctx.beginPath();
+                    ctx.arc(points[j].x, points[j].y, pointRadius * 1.5, 0, Math.PI * 2);
+                    const pointGlow = ctx.createRadialGradient(
+                        points[j].x, points[j].y, 0,
+                        points[j].x, points[j].y, pointRadius * 2.5
+                    );
+                    pointGlow.addColorStop(0, rgba(colorScheme.highlight, p.life / PARTICLE_LIFETIME * 0.8));
+                    pointGlow.addColorStop(0.6, rgba(colorScheme.core, p.life / PARTICLE_LIFETIME * 0.4));
+                    pointGlow.addColorStop(1, rgba(colorScheme.dark, 0));
+                    ctx.fillStyle = pointGlow;
+                    ctx.fill();
+                    
+                    // 再绘制白色核心
+                    ctx.beginPath();
+                    ctx.arc(points[j].x, points[j].y, pointRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${p.life / PARTICLE_LIFETIME * 0.95})`;
+                    ctx.fill();
+                }
                 
                 ctx.restore();
             }
-            // 绘制后清除阴影，避免影响其他绘制
-            ctx.shadowBlur = 0;
-            ctx.shadowColor = 'transparent';
-            ctx.globalAlpha = 1.0;
         }
 
         // --- 核心颜色定义与辅助颜色生成 ---
@@ -946,7 +991,7 @@
             // 定义频率范围和频段数量
             const targetStartFreq = 20; // Hz
             const targetEndFreq = 1000; // Hz
-            const numVisualBars = 60; // 从 80 减少到 60
+            const numVisualBars = 80; // 固定的频段数量
 
             const nyquist = audioContext.sampleRate / 2;
             const startIndex = Math.max(0, Math.floor(targetStartFreq / nyquist * analyser.frequencyBinCount));
@@ -1023,19 +1068,20 @@
             // --- 绘制外围光晕 ---
             const spectrumOuterGlow = ctx.createRadialGradient(
                 centerX, centerY, baseRadius * 0.9,
-                centerX, centerY, baseRadius * 1.8 // 可以考虑稍微减小外圈半径 baseRadius * 1.6
+                centerX, centerY, baseRadius * 1.8
             );
 
             // 计算光晕的强度系数 - 根据音频强度调整
             const glowIntensity = Math.min(1, peakValue / 180); // 将峰值归一化为0-1
 
-            // 使用多个渐变点创建更自然的光晕过渡，并根据音频强度调整透明度 - 减少addColorStop
-            spectrumOuterGlow.addColorStop(0, rgba(colorScheme.mid, 0.30 * glowIntensity)); // 稍微降低透明度
-            spectrumOuterGlow.addColorStop(0.5, rgba(colorScheme.core, 0.20 * glowIntensity)); // 调整位置和透明度
+            // 使用多个渐变点创建更自然的光晕过渡，并根据音频强度调整透明度
+            spectrumOuterGlow.addColorStop(0, rgba(colorScheme.mid, 0.35 * glowIntensity));
+            spectrumOuterGlow.addColorStop(0.3, rgba(colorScheme.core, 0.25 * glowIntensity));
+            spectrumOuterGlow.addColorStop(0.7, rgba(colorScheme.dark, 0.15 * glowIntensity));
             spectrumOuterGlow.addColorStop(1, rgba(colorScheme.darker, 0));
             
             ctx.beginPath();
-            ctx.arc(centerX, centerY, baseRadius * 1.8, 0, Math.PI * 2); // 同上，可考虑 baseRadius * 1.6
+            ctx.arc(centerX, centerY, baseRadius * 1.8, 0, Math.PI * 2);
             ctx.fillStyle = spectrumOuterGlow;
             ctx.fill();
             
@@ -1046,8 +1092,8 @@
             
             // 在绘制频谱时，先绘制外部发光效果，增强边缘光晕
             ctx.globalCompositeOperation = 'lighter';
-            ctx.shadowBlur = 10; // 增加模糊半径 - 从20减少到10
-            ctx.shadowColor = rgba(colorScheme.dark, 0.8); // 稍微降低透明度
+            ctx.shadowBlur = 20; // 增加模糊半径
+            ctx.shadowColor = rgba(colorScheme.dark, 0.9);
     
             for (let i = 0; i < numVisualBars; i++) {
                 const currentA = pointsA[i];
@@ -1071,8 +1117,8 @@
             
             // 再绘制白色线条核心
             ctx.globalCompositeOperation = 'source-over';
-            ctx.shadowBlur = 5; // 从8减少到5
-            ctx.shadowColor = rgba(colorScheme.glow, 0.7); // 稍微降低透明度
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = rgba(colorScheme.glow, 0.8);
             ctx.lineWidth = 1.2;
             
             for (let i = 0; i < numVisualBars; i++) {
@@ -1098,55 +1144,71 @@
             const pointRadiusBase = 0.75; // 缩小到原来的一半
             const originalValueThreshold = 8;
 
-            // ctx.globalCompositeOperation = 'lighter'; // 暂时移除此处的 lighter，看效果和性能
+            ctx.globalCompositeOperation = 'lighter';
 
-            // 绘制外圈点 - 简化光晕
+            // 绘制外圈点 - 更柔和透明的大范围光晕
             for (let i = 0; i < numVisualBars; i++) {
                 const rawNormA = pointsA[i].originalNormalizedValue;
                 if (rawNormA * 255 > originalValueThreshold) {
-                    ctx.save();
-                    // ctx.globalCompositeOperation = 'lighter'; // 移除 'lighter' 以优化性能
+                    // 1. 更大范围的极柔和光晕
+                    const largeGlowRadius = pointRadiusBase * 30 + rawNormA * 40; // 进一步扩大光晕半径
+                    const glow = ctx.createRadialGradient(
+                        pointsA[i].x, pointsA[i].y, 0,
+                        pointsA[i].x, pointsA[i].y, largeGlowRadius
+                    );
+                    // 更透明、更柔和的光晕过渡
+                    glow.addColorStop(0, rgba(colorScheme.point, 0.6));  // 降低中心不透明度
+                    glow.addColorStop(0.05, rgba(colorScheme.highlight, 0.4)); // 更快的初始过渡
+                    glow.addColorStop(0.2, rgba(colorScheme.core, 0.15));     // 更透明
+                    glow.addColorStop(0.5, rgba(colorScheme.core, 0.06));     // 非常透明
+                    glow.addColorStop(1, rgba(colorScheme.dark, 0));          // 完全透明
                     
-                    // 1. 绘制光晕层: 一个半透明的较大圆圈
-                    const glowRadius = pointRadiusBase * 8 + rawNormA * 15; 
                     ctx.beginPath();
-                    ctx.arc(pointsA[i].x, pointsA[i].y, glowRadius, 0, Math.PI * 2);
-                    // 调整颜色/透明度以在没有 'lighter' 的情况下看起来不错
-                    ctx.fillStyle = rgba(colorScheme.highlight, 0.20 + rawNormA * 0.25); 
+                    ctx.arc(pointsA[i].x, pointsA[i].y, largeGlowRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = glow;
                     ctx.fill();
                     
-                    // 2. 绘制白色光点核心
-                    ctx.beginPath();
-                    ctx.arc(pointsA[i].x, pointsA[i].y, pointRadiusBase * 1.2, 0, Math.PI * 2); 
-                    ctx.fillStyle = rgba(colorScheme.point, 0.90 + rawNormA * 0.10); // 核心点可以更不透明
-                    ctx.fill();
+                    // 2. 缩小的白色光点核心
+                    ctx.shadowBlur = 4; // 减小阴影模糊
+                    ctx.shadowColor = rgba(colorScheme.point, 0.7); // 更透明的阴影
                     
-                    ctx.restore();
+                    ctx.beginPath();
+                    ctx.arc(pointsA[i].x, pointsA[i].y, pointRadiusBase, 0, Math.PI * 2);
+                    ctx.fillStyle = rgba(colorScheme.point, 0.9); // 略微降低不透明度
+                    ctx.fill();
                 }
             }
             
-            // 内圈点也同样处理 - 简化光晕
+            // 内圈点也同样处理
             for (let i = 0; i < numVisualBars; i++) {
                 const rawNormB = pointsB[i].originalNormalizedValue;
                 if (rawNormB * 255 > originalValueThreshold) {
-                    ctx.save();
-                    // ctx.globalCompositeOperation = 'lighter'; // 移除 'lighter' 以优化性能
-
-                    // 1. 绘制光晕层
-                    const glowRadius = pointRadiusBase * 6 + rawNormB * 12; 
+                    // 光晕 - 同样更大更柔和
+                    const glowRadius = pointRadiusBase * 20 + rawNormB * 24; // 更大的光晕
+                    const glow = ctx.createRadialGradient(
+                        pointsB[i].x, pointsB[i].y, 0,
+                        pointsB[i].x, pointsB[i].y, glowRadius
+                    );
+                    // 更透明、更柔和的过渡
+                    glow.addColorStop(0, rgba(colorScheme.point, 0.5));
+                    glow.addColorStop(0.1, rgba(colorScheme.highlight, 0.3));
+                    glow.addColorStop(0.3, rgba(colorScheme.core, 0.12));
+                    glow.addColorStop(0.7, rgba(colorScheme.core, 0.05));
+                    glow.addColorStop(1, rgba(colorScheme.darker, 0));
+                    
                     ctx.beginPath();
                     ctx.arc(pointsB[i].x, pointsB[i].y, glowRadius, 0, Math.PI * 2);
-                    // 调整颜色/透明度
-                    ctx.fillStyle = rgba(colorScheme.core, 0.18 + rawNormB * 0.22); 
+                    ctx.fillStyle = glow;
                     ctx.fill();
                     
-                    // 2. 绘制核心
+                    // 核心 - 同样缩小
+                    ctx.shadowBlur = 3; // 更小的阴影模糊
+                    ctx.shadowColor = rgba(colorScheme.point, 0.6); // 更透明的阴影
+                    
                     ctx.beginPath();
-                    ctx.arc(pointsB[i].x, pointsB[i].y, pointRadiusBase * 0.8, 0, Math.PI * 2); 
-                    ctx.fillStyle = rgba(colorScheme.point, 0.85 + rawNormB * 0.10);
+                    ctx.arc(pointsB[i].x, pointsB[i].y, pointRadiusBase * 0.4, 0, Math.PI * 2); // 更小的核心
+                    ctx.fillStyle = rgba(colorScheme.point, 0.85); // 略微降低不透明度
                     ctx.fill();
-
-                    ctx.restore();
                 }
             }
             
@@ -1156,7 +1218,7 @@
             ctx.shadowColor = 'transparent';
 
             // --- 粒子效果 (修改颜色以匹配) ---
-            if (peakValue > 180 && particles.length < MAX_PARTICLES && Math.random() < 0.25) { // 当有强峰值时生成粒子 - 降低生成概率
+            if (peakValue > 180 && particles.length < MAX_PARTICLES && Math.random() < 0.3) { // 当有强峰值时生成粒子
                  // 从中心或频谱边缘生成粒子
                 const spawnAngle = Math.random() * Math.PI * 2;
                 const spawnRadius = baseRadius * (Math.random() * 0.5 + 0.8); // 在频谱附近
