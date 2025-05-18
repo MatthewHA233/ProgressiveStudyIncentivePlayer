@@ -195,8 +195,8 @@ class FloatingButton(QWidget):
         # 创建玻璃效果面板
         self.glass_panel = GlassPanel(self)
         panel_layout = QVBoxLayout(self.glass_panel)
-        panel_layout.setContentsMargins(15, 15, 15, 15)
-        panel_layout.setSpacing(8)
+        panel_layout.setContentsMargins(15, 10, 15, 10)
+        panel_layout.setSpacing(5)
         
         # 添加时间标签
         self.time_label = ModernLabel(self.current_time)
@@ -215,7 +215,7 @@ class FloatingButton(QWidget):
         
         # 创建信息布局
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(4)
+        info_layout.setSpacing(2)
         
         # 添加目标时长标签 - 修改为居中对齐
         self.target_label = ModernLabel(f"目标时长: {self.target_time}")
@@ -255,7 +255,7 @@ class FloatingButton(QWidget):
         self.setLayout(main_layout)
         
         # 设置窗口大小
-        self.setFixedSize(220, 240)
+        self.setFixedSize(220, 200)
         
         # 初始位置
         desktop = QApplication.desktop()
