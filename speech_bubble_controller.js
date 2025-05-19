@@ -263,8 +263,6 @@ function playAudio(audioName) {
       // 如果有音频正在播放，停止它
       if (currentAudio) {
         currentAudio.pause();
-        currentAudio.onended = null; // 清除旧的回调
-        currentAudio.onerror = null; // 清除旧的回调
         currentAudio = null;
       }
       audioPlaying = false;
@@ -381,105 +379,35 @@ async function fetchStudyStatus() {
     // 如果当天的文件不存在，使用默认状态
     if (!response.ok) {
       console.log('当天CSV文件不存在，使用默认状态');
-      return { isStudying: false, isLongSessionActive: false, level: 'C', totalStudyHours: 0, studyTimeString: "0时0分" };
+      return { isStudying: false };
     }
     
     const content = await response.text();
+    
+    // 解析CSV内容
     const lines = content.trim().split('\n');
     
+    // 跳过标题行
     if (lines.length <= 1) {
       console.log('CSV文件没有数据记录');
-      return { isStudying: false, isLongSessionActive: false, level: 'C', totalStudyHours: 0, studyTimeString: "0时0分" };
+      return { isStudying: false };
     }
     
-    // --- 新增：检测连续学习90分钟 (18条记录) ---
-    let isLongSessionActive = false;
-    const MIN_RECORDS_FOR_LONG_SESSION = 18;
-
-    function timeToMinutes(timeStr) { // "HH:MM"
-        if (!timeStr || !timeStr.includes(':')) return -1; // 基本的格式检查
-        const parts = timeStr.split(':');
-        if (parts.length !== 2) return -1;
-        const hours = parseInt(parts[0], 10);
-        const minutes = parseInt(parts[1], 10);
-        if (isNaN(hours) || isNaN(minutes)) return -1;
-        return hours * 60 + minutes;
-    }
-
-    if (lines.length > MIN_RECORDS_FOR_LONG_SESSION) { // 至少需要 1个头部 + 18个数据行
-        const dataLines = lines.slice(1); // 跳过标题行
-        if (dataLines.length >= MIN_RECORDS_FOR_LONG_SESSION) {
-            const recent18Lines = dataLines.slice(-MIN_RECORDS_FOR_LONG_SESSION);
-            let allConsecutiveAndFiveMinApart = true;
-            for (let i = 0; i < recent18Lines.length; i++) {
-                const currentLineParts = recent18Lines[i].split(',');
-                if (currentLineParts.length < 1 || !currentLineParts[0]) { // 检查行和时间数据是否存在
-                    allConsecutiveAndFiveMinApart = false;
-                    break;
-                }
-
-                if (i > 0) {
-                    const prevLineParts = recent18Lines[i-1].split(',');
-                     if (prevLineParts.length < 1 || !prevLineParts[0]) {
-                        allConsecutiveAndFiveMinApart = false;
-                        break;
-                    }
-                    const prevTimeStr = prevLineParts[0];
-                    const currentTimeStr = currentLineParts[0];
-
-                    const prevMinutes = timeToMinutes(prevTimeStr);
-                    const currentMinutes = timeToMinutes(currentTimeStr);
-
-                    if (prevMinutes === -1 || currentMinutes === -1) { // 时间格式错误
-                        allConsecutiveAndFiveMinApart = false;
-                        break;
-                    }
-
-                    let diff = currentMinutes - prevMinutes;
-                    // 处理午夜换日的情况 (例如从 23:55 到 00:00)
-                    if (diff < 0 && Math.abs(diff) > (22 * 60)) { // 如果差异为负且绝对值很大，则假定为换日
-                        diff += 24 * 60;
-                    }
-
-                    if (diff !== 5) {
-                        allConsecutiveAndFiveMinApart = false;
-                        break;
-                    }
-                }
-            }
-            if (allConsecutiveAndFiveMinApart) {
-                isLongSessionActive = true;
-                console.log("检测到连续学习90分钟！");
-            }
-        }
-    }
-    // --- 连续学习检测结束 ---
-
+    // 获取最后一行数据
     const lastLine = lines[lines.length - 1];
     const [time, status] = lastLine.split(',');
     
+    // 计算时间差
     const now = new Date();
-    const recordTimeParts = time ? time.split(':').map(Number) : [];
+    const [hours, minutes] = time.split(':').map(Number);
     const recordTime = new Date();
-    if (recordTimeParts.length === 2 && !isNaN(recordTimeParts[0]) && !isNaN(recordTimeParts[1])) {
-        recordTime.setHours(recordTimeParts[0], recordTimeParts[1], 0, 0);
-    } else {
-        // 如果时间格式不正确，则认为记录无效，可能不是在学习
-        console.warn('CSV中最新记录的时间格式无效:', time);
-        return { 
-            isStudying: false, 
-            isLongSessionActive: isLongSessionActive, // 即使最新记录无效，长时段检测可能仍然有效
-            level: 'C', 
-            totalStudyHours: 0, 
-            studyTimeString: "0时0分" 
-        };
-    }
-    
+    recordTime.setHours(hours, minutes, 0, 0);
     const diffMs = now - recordTime;
     const timeDiff = Math.floor(diffMs / (1000 * 60));
     
-    console.log(`最近记录时间: ${time}, 状态: ${status}, 时间差: ${timeDiff}分钟, 是否连续90分钟: ${isLongSessionActive}`);
+    console.log(`最近记录时间: ${time}, 状态: ${status}, 时间差: ${timeDiff}分钟`);
     
+    // 从floating_button_data.json获取学习时长信息
     const buttonDataResponse = await fetch(`${BUBBLE_CONFIG.BUTTON_DATA_PATH}?t=${timestamp}`);
     let totalStudyHours = 0;
     let studyTimeString = "0时0分";
@@ -504,8 +432,7 @@ async function fetchStudyStatus() {
         isStudying: false,
         level: level,
         totalStudyHours: totalStudyHours,
-        studyTimeString: studyTimeString,
-        isLongSessionActive: isLongSessionActive
+        studyTimeString: studyTimeString
       };
     }
     
@@ -514,12 +441,11 @@ async function fetchStudyStatus() {
       isEfficient: status === '高效',
       level: level,
       totalStudyHours: totalStudyHours,
-      studyTimeString: studyTimeString,
-      isLongSessionActive: isLongSessionActive
+      studyTimeString: studyTimeString
     };
   } catch (error) {
     console.error('获取或处理CSV数据失败:', error);
-    return { isStudying: false, isLongSessionActive: false, level: 'C', totalStudyHours: 0, studyTimeString: "0时0分" };
+    return { isStudying: false };
   }
 }
 
@@ -527,85 +453,74 @@ async function fetchStudyStatus() {
  * 根据条件选择并播放台词
  * @param {Object} currentStatus 当前学习状态
  * @param {Object} previousStatus 上一个学习状态
- * @param {boolean} studyTimeChanged 学习时长是否发生变化 (此参数在此函数内部不再严格依赖，因为调用处已处理)
+ * @param {boolean} studyTimeChanged 学习时长是否发生变化
  */
 function selectAndPlaySpeech(currentStatus, previousStatus, studyTimeChanged) {
+  // 如果有音频正在播放，不执行新的播放
   if (audioPlaying) {
-    console.log('已有音频正在播放，跳过本次台词选择');
+    console.log('已有音频正在播放，跳过本次检查');
     return;
   }
   
-  console.log('选择台词 - 当前状态:', currentStatus, '上一状态:', previousStatus);
-
-  // 优先处理 LONG_SESSION 状态
-  // 当 isLongSessionActive 从 false 变为 true 时触发
-  if (currentStatus.isLongSessionActive && (!previousStatus || !previousStatus.isLongSessionActive)) {
-    const comments = SPEECH_CONFIG.LEARNING_COMMENTS.LONG_SESSION;
-    const commentIndex = Math.floor(Math.random() * comments.length);
-    const comment = comments[commentIndex];
-    
-    console.log("触发 LONG_SESSION 台词");
-    playSpeechWithBubble(comment, 'LONG_SESSION', commentIndex); // 假设音频文件前缀为 LONG_SESSION
-    return; // 最高优先级，播放后直接返回
+  console.log('当前状态:', currentStatus, '上一状态:', previousStatus, '时长变化:', studyTimeChanged);
+  
+  // 如果学习时长没有变化，不触发台词
+  if (!studyTimeChanged && lastStudyTime !== null) {
+    console.log('学习时长未变化，不触发台词');
+    return;
   }
   
-  // 1. 刚开始学习状态 (如果不是 LONG_SESSION)
+  // 1. 刚开始学习状态
   if (currentStatus.isStudying && (!previousStatus || !previousStatus.isStudying)) {
     const comments = SPEECH_CONFIG.LEARNING_COMMENTS.START;
     const commentIndex = Math.floor(Math.random() * comments.length);
     const comment = comments[commentIndex];
     
-    console.log("触发 START 台词");
     playSpeechWithBubble(comment, 'START', commentIndex);
     return;
   }
   
-  // 只有在学习状态下，并且不是刚开始学习或进入长时学习时，才判断以下内容
-  if (currentStatus.isStudying) {
-    // 2. 学习中但分心状态 (NORMAL)
-    if (!currentStatus.isEfficient) {
-      const comments = SPEECH_CONFIG.EXPRESSIONS_COMMENTS.NORMAL;
+  // 2. 学习中但分心状态
+  if (currentStatus.isStudying && !currentStatus.isEfficient) {
+    const comments = SPEECH_CONFIG.EXPRESSIONS_COMMENTS.NORMAL;
+    const commentIndex = Math.floor(Math.random() * comments.length);
+    const comment = comments[commentIndex];
+    
+    playSpeechWithBubble(comment, 'NORMAL', commentIndex);
+    return;
+  }
+  
+  // 3. 高效学习状态
+  if (currentStatus.isStudying && currentStatus.isEfficient) {
+    // a. 5%概率触发EFFICIENT台词
+    if (Math.random() < BUBBLE_CONFIG.EFFICIENT_CHANCE) {
+      const comments = SPEECH_CONFIG.EXPRESSIONS_COMMENTS.EFFICIENT;
       const commentIndex = Math.floor(Math.random() * comments.length);
       const comment = comments[commentIndex];
       
-      console.log("触发 NORMAL 台词");
-      playSpeechWithBubble(comment, 'NORMAL', commentIndex);
+      playSpeechWithBubble(comment, 'EFFICIENT', commentIndex);
       return;
     }
     
-    // 3. 高效学习状态 (EFFICIENT 或 DURATION_COMMENTS)
-    if (currentStatus.isEfficient) {
-      // a. 5%概率触发EFFICIENT台词
-      if (Math.random() < BUBBLE_CONFIG.EFFICIENT_CHANCE) {
-        const comments = SPEECH_CONFIG.EXPRESSIONS_COMMENTS.EFFICIENT;
-        const commentIndex = Math.floor(Math.random() * comments.length);
-        const comment = comments[commentIndex];
-        
-        console.log("触发 EFFICIENT 台词 (随机)");
-        playSpeechWithBubble(comment, 'EFFICIENT', commentIndex);
-        return;
-      }
+    // b. 95%概率触发对应学习阶段的台词
+    const level = currentStatus.level;
+    
+    if (SPEECH_CONFIG.DURATION_COMMENTS[level]) {
+      const comments = SPEECH_CONFIG.DURATION_COMMENTS[level];
+      const commentIndex = Math.floor(Math.random() * comments.length);
+      const comment = comments[commentIndex];
       
-      // b. 95%概率触发对应学习阶段的台词
-      const level = currentStatus.level;
-      if (SPEECH_CONFIG.DURATION_COMMENTS[level]) {
-        const comments = SPEECH_CONFIG.DURATION_COMMENTS[level];
-        const commentIndex = Math.floor(Math.random() * comments.length);
-        const comment = comments[commentIndex];
-        
-        console.log(`触发 DURATION_COMMENTS (${level}) 台词`);
-        playSpeechWithBubble(comment, level, commentIndex);
-      } else {
-        console.warn(`未找到等级 ${level} 的台词配置，使用C级台词`);
-        const comments = SPEECH_CONFIG.DURATION_COMMENTS.C;
-        const commentIndex = Math.floor(Math.random() * comments.length);
-        const comment = comments[commentIndex];
-        playSpeechWithBubble(comment, 'C', commentIndex);
-      }
-      return; // 确保在高效学习状态下有返回
+      playSpeechWithBubble(comment, level, commentIndex);
+    } else {
+      console.warn(`未找到等级 ${level} 的台词配置`);
+      // 默认使用C级台词
+      const comments = SPEECH_CONFIG.DURATION_COMMENTS.C;
+      const commentIndex = Math.floor(Math.random() * comments.length);
+      const comment = comments[commentIndex];
+      
+      playSpeechWithBubble(comment, 'C', commentIndex);
     }
   }
-  // console.log("没有合适的台词被触发");
 }
 
 /**
@@ -613,66 +528,54 @@ function selectAndPlaySpeech(currentStatus, previousStatus, studyTimeChanged) {
  */
 async function checkAndUpdateSpeech() {
   try {
+    // 获取当前学习状态
     const currentStatus = await fetchStudyStatus();
+    
+    // 检查学习时长是否发生变化
     const studyTimeChanged = lastStudyTime !== currentStatus.studyTimeString;
-
+    
+    // 更新上次检测到的学习时长
     if (studyTimeChanged) {
       console.log(`学习时长变化: ${lastStudyTime} -> ${currentStatus.studyTimeString}`);
       lastStudyTime = currentStatus.studyTimeString;
     }
     
-    const previousStatus = getPreviousStudyStatus(); // 获取包含 isLongSessionActive 的上一个状态
+    // 获取上一个学习状态
+    const previousStatus = getPreviousStudyStatus();
     
-    // 决定是否将当前状态添加到历史记录
-    let significantChange = false;
-    if (!previousStatus) {
-        significantChange = true;
-    } else {
-        if (previousStatus.isStudying !== currentStatus.isStudying ||
-            previousStatus.isEfficient !== currentStatus.isEfficient ||
-            // 检查 isLongSessionActive 是否有意义地改变了
-            (previousStatus.isLongSessionActive === undefined && currentStatus.isLongSessionActive === true) || 
-            (previousStatus.isLongSessionActive !== undefined && previousStatus.isLongSessionActive !== currentStatus.isLongSessionActive)) {
-            significantChange = true;
-        }
-    }
-
-    if (significantChange || studyTimeChanged) { // 如果有显著状态变化或学习时间变化，则记录
-        // （如果仅 studyTimeChanged 但核心状态未变，是否记录取决于需求，目前significantChange已包含核心状态）
-        // 为了确保 previousStatus.isLongSessionActive 在下次迭代中可用，即使只有 studyTimeChanged 也可能需要记录
-        // 但如果状态完全一样，只是时间戳更新，则不需要重复记录。
-        // 当前 significantChange 的定义应该足够。
-        if (significantChange) {
-             addStudyStatus(currentStatus);
-        }
+    // 如果当前状态与上一个状态不同，则添加到历史记录
+    if (!previousStatus || 
+        previousStatus.isStudying !== currentStatus.isStudying || 
+        previousStatus.isEfficient !== currentStatus.isEfficient) {
+      addStudyStatus(currentStatus);
     }
     
     const now = new Date().getTime();
     
+    // 处理未学习状态
     if (!currentStatus.isStudying) {
       isInDefaultState = true;
+      
+      // 如果学习时长变化或者距离上次DEFAULT台词已经过了5分钟
       if (studyTimeChanged || (now - lastDefaultSpeechTime > BUBBLE_CONFIG.DEFAULT_REPEAT_INTERVAL)) {
         lastDefaultSpeechTime = now;
         const comments = SPEECH_CONFIG.EXPRESSIONS_COMMENTS.DEFAULT;
         const commentIndex = Math.floor(Math.random() * comments.length);
         const comment = comments[commentIndex];
         
-        console.log("触发 DEFAULT 台词");
         playSpeechWithBubble(comment, 'DEFAULT', commentIndex);
       }
-    } else { // 正在学习
+    } 
+    // 学习状态
+    else {
+      // 如果从未学习状态转为学习状态，重置标志
       if (isInDefaultState) {
         isInDefaultState = false;
-        // 从非学习转为学习，这是一个重要的触发点，selectAndPlaySpeech会处理
       }
       
-      // 学习状态下，当学习时长变化 或 isLongSessionActive状态变化时，尝试播放台词
-      const longSessionStateJustChanged = previousStatus ? (previousStatus.isLongSessionActive !== currentStatus.isLongSessionActive && currentStatus.isLongSessionActive === true) : currentStatus.isLongSessionActive;
-
-      if (studyTimeChanged || longSessionStateJustChanged) {
+      // 学习状态下，只有在学习时长变化时才触发台词
+      if (studyTimeChanged) {
         selectAndPlaySpeech(currentStatus, previousStatus, studyTimeChanged);
-      } else {
-        // console.log("学习状态，但时长未变且长时段状态未变，不触发台词");
       }
     }
   } catch (error) {

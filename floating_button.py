@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import csv
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, 
                             QHBoxLayout, QGraphicsDropShadowEffect, QMenu, QAction)
 from PyQt5.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve, QRect, QRectF
@@ -151,6 +152,138 @@ class GlassPanel(QWidget):
         painter.setPen(QPen(QBrush(gradient), 2))
         painter.drawLine(int(self.width()*0.05), self.height()-2, int(self.width()*0.95), self.height()-2)
 
+class HeatmapWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(220, 100)  # 保持整体大小不变
+        
+        # 初始化数据结构
+        self.hourly_data = {}  # 存储每小时的学习状态数据
+        self.current_hour = datetime.now().hour
+        self.last_update_hour = self.current_hour  # 用于检测小时变化
+        
+        # 设置边距和布局参数
+        self.margin_top = 20  # 顶部留空给小时标记
+        self.margin_bottom = 5
+        self.margin_left = 10  # 恢复合理的左边距
+        self.margin_right = 10  # 对称的右边距
+        self.column_width = 20  # 稍微减小列宽以适应更多列
+    
+    def update_data(self, csv_path):
+        """从CSV文件更新数据"""
+        try:
+            self.hourly_data.clear()
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    time_str = row['时间']
+                    status = row['状态']
+                    hour, minute = map(int, time_str.split(':'))
+                    
+                    if hour not in self.hourly_data:
+                        self.hourly_data[hour] = [None] * 12  # 12个5分钟时段
+                    
+                    # 计算5分钟时段的索引
+                    index = minute // 5
+                    if index < 12:  # 确保索引在范围内
+                        self.hourly_data[hour][index] = status == '高效'
+            
+            # 检查是否需要更新显示
+            current_hour = datetime.now().hour
+            if current_hour != self.last_update_hour:
+                self.last_update_hour = current_hour
+                self.update()
+            else:
+                self.update()
+        except Exception as e:
+            print(f"更新热力图数据时出错: {e}")
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 获取当前时间
+        now = datetime.now()
+        current_hour = now.hour
+        current_minute = now.minute
+        current_index = current_minute // 5
+        
+        # 计算显示范围（前9小时到当前小时）
+        start_hour = 6  # 固定从6点开始
+        end_hour = 22   # 固定到22点结束
+        
+        # 计算总列数
+        total_hours = end_hour - start_hour
+        
+        # 计算可用绘制区域
+        available_width = self.width() - self.margin_left - self.margin_right
+        available_height = self.height() - self.margin_top - self.margin_bottom
+        
+        # 计算每个小时格子的高度
+        cell_height = int(available_height / 12)  # 转换为整数
+        
+        # 计算热力图的起始x坐标，使其居中
+        start_x = self.margin_left
+        
+        # 绘制小时标记
+        painter.setPen(QColor(200, 200, 200))
+        painter.setFont(QFont("Arial", 8))
+        
+        for hour in range(start_hour, end_hour):
+            x = start_x + (hour - start_hour) * self.column_width
+            # 绘制小时文本
+            hour_text = f"{hour:02d}"
+            text_rect = painter.fontMetrics().boundingRect(hour_text)
+            text_x = x + (self.column_width - text_rect.width()) // 2
+            painter.drawText(text_x, 15, hour_text)
+            
+            # 绘制分隔线
+            if hour > start_hour:  # 不绘制第一条分隔线
+                line_x = x - 1
+                painter.drawLine(line_x, self.margin_top, line_x, self.height() - self.margin_bottom)
+        
+        # 绘制每个小时的格子
+        for hour in range(start_hour, end_hour):
+            x = start_x + (hour - start_hour) * self.column_width
+            
+            if hour in self.hourly_data:
+                for i, status in enumerate(self.hourly_data[hour]):
+                    if status is not None:
+                        y = self.margin_top + i * cell_height
+                        rect = QRect(x, y, self.column_width - 1, cell_height - 1)
+                        
+                        # 创建渐变色
+                        if status:  # 高效状态
+                            gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+                            gradient.setColorAt(0, QColor(46, 204, 113, 230))
+                            gradient.setColorAt(1, QColor(46, 204, 113, 180))
+                        else:  # 普通状态
+                            gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+                            gradient.setColorAt(0, QColor(241, 196, 15, 230))
+                            gradient.setColorAt(1, QColor(241, 196, 15, 180))
+                        
+                        painter.fillRect(rect, gradient)
+                        
+                        # 绘制边框
+                        painter.setPen(QPen(QColor(255, 255, 255, 30)))
+                        painter.drawRect(rect)
+        
+        # 绘制当前时间指示线
+        if current_hour >= start_hour and current_hour < end_hour:
+            # 计算当前时间对应的y坐标
+            current_y = self.margin_top + current_index * cell_height + cell_height / 2
+            
+            # 计算当前时间列的x坐标
+            current_x = start_x + (current_hour - start_hour) * self.column_width
+            
+            # 设置红色渐变线
+            painter.setPen(QPen(QColor(255, 50, 50, 200), 2))
+            painter.drawLine(
+                current_x, current_y,
+                current_x + self.column_width - 2, current_y
+            )
+
 class FloatingButton(QWidget):
     def __init__(self):
         super().__init__()
@@ -162,6 +295,11 @@ class FloatingButton(QWidget):
         self.target_time = "12小时"
         self.predicted_time = "0时00分"
         self.remaining_time = "0时00分"
+        self.current_date = datetime.now().strftime("%Y-%m-%d")  # 移到这里初始化
+        
+        # 添加新的控制变量
+        self.heatmap_visible = True
+        self.opacity = 1.0  # 透明度，1.0表示完全不透明
         
         # 设置窗口属性
         self.setWindowFlags(
@@ -185,6 +323,11 @@ class FloatingButton(QWidget):
         
         # 添加提示信息
         self.setToolTip("双击打开昼夜表")
+        
+        # 初始化热力图更新定时器
+        self.heatmap_timer = QTimer(self)
+        self.heatmap_timer.timeout.connect(self.update_heatmap)
+        self.heatmap_timer.start(300000)  # 每5分钟更新一次
         
     def initUI(self):
         # 主布局
@@ -213,23 +356,26 @@ class FloatingButton(QWidget):
         self.level_label.setAlignment(Qt.AlignCenter)
         self.level_label.setFont(QFont("Arial", 12, QFont.Bold))
         
+        # 创建热力图组件
+        self.heatmap = HeatmapWidget(self)
+        
         # 创建信息布局
         info_layout = QVBoxLayout()
         info_layout.setSpacing(2)
         
-        # 添加目标时长标签 - 修改为居中对齐
+        # 添加目标时长标签
         self.target_label = ModernLabel(f"目标时长: {self.target_time}")
-        self.target_label.setAlignment(Qt.AlignCenter)  # 改为居中
+        self.target_label.setAlignment(Qt.AlignCenter)
         self.target_label.setFont(QFont("Arial", 10))
         
-        # 添加预测时长标签 - 修改为居中对齐
+        # 添加预测时长标签
         self.predicted_label = ModernLabel(f"预测时长: {self.predicted_time}")
-        self.predicted_label.setAlignment(Qt.AlignCenter)  # 改为居中
+        self.predicted_label.setAlignment(Qt.AlignCenter)
         self.predicted_label.setFont(QFont("Arial", 10))
         
-        # 添加目标外空闲时间标签 - 修改为居中对齐
+        # 添加目标外空闲时间标签
         self.remaining_label = ModernLabel(f"若达标则空闲: {self.remaining_time}")
-        self.remaining_label.setAlignment(Qt.AlignCenter)  # 改为居中
+        self.remaining_label.setAlignment(Qt.AlignCenter)
         self.remaining_label.setFont(QFont("Arial", 10))
         
         # 将标签添加到信息布局
@@ -241,6 +387,7 @@ class FloatingButton(QWidget):
         panel_layout.addWidget(self.time_label)
         panel_layout.addWidget(self.study_label)
         panel_layout.addWidget(self.level_label)
+        panel_layout.addWidget(self.heatmap)  # 添加热力图
         panel_layout.addLayout(info_layout)
         
         # 添加阴影效果
@@ -255,14 +402,27 @@ class FloatingButton(QWidget):
         self.setLayout(main_layout)
         
         # 设置窗口大小
-        self.setFixedSize(220, 200)
+        self.setFixedSize(220, 280)  # 增加高度以容纳热力图
         
         # 初始位置
         desktop = QApplication.desktop()
         screen_rect = desktop.availableGeometry(desktop.primaryScreen())
-        self.move(screen_rect.width() - 240, screen_rect.height() - 280)
+        self.move(screen_rect.width() - 240, screen_rect.height() - 300)
         
         self.show()
+        
+        # 初始化热力图数据
+        self.update_heatmap()
+    
+    def update_heatmap(self):
+        """更新热力图数据"""
+        try:
+            # 获取当前日期的CSV文件路径
+            csv_path = os.path.join("statistics", "five_minute_logs", f"五分钟记录_{self.current_date}.csv")
+            if os.path.exists(csv_path):
+                self.heatmap.update_data(csv_path)
+        except Exception as e:
+            print(f"更新热力图时出错: {e}")
     
     def update_data(self, current_level, study_time, target_time, predicted_time=None, remaining_time=None):
         """更新按钮显示的数据"""
@@ -271,16 +431,15 @@ class FloatingButton(QWidget):
             self.study_time = study_time
             self.target_time = target_time
             
-            # 不再使用传入的预测时长和空闲时间，而是自己计算
-            # self.predicted_time = predicted_time
-            # self.remaining_time = remaining_time
-            
             self.level_label.setText(self.current_level)
             self.study_label.setText(self.study_time)
             self.target_label.setText(f"目标时长: {self.target_time}")
             
             # 计算预测时长和空闲时间
             self.calculate_predictions()
+            
+            # 更新热力图
+            self.update_heatmap()
         except Exception as e:
             print(f"更新悬浮按钮数据时出错: {e}")
     
@@ -377,83 +536,84 @@ class FloatingButton(QWidget):
     def mouseDoubleClickEvent(self, event):
         """双击事件处理 - 打开昼夜表"""
         if event.button() == Qt.LeftButton:
+            self.open_excel_file()
+    
+    def open_excel_file(self):
+        """打开昼夜表"""
+        try:
+            # 获取当前日期
+            current_date = datetime.now()
+            
+            # 计算当前是第几周
+            # 从配置文件读取起始日期，如果没有配置文件，使用默认值
             try:
-                # 获取当前日期
-                current_date = datetime.now()
-                
-                # 计算当前是第几周
-                # 从配置文件读取起始日期，如果没有配置文件，使用默认值
-                try:
-                    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
-                    if os.path.exists(config_path):
-                        with open(config_path, 'r', encoding='utf-8') as f:
-                            config = json.load(f)
-                        start_date = datetime.strptime(config.get('start_date', '2023-01-01'), '%Y-%m-%d')
-                    else:
-                        # 如果没有配置文件，使用默认起始日期
-                        start_date = datetime(2023, 1, 1)
-                except Exception as e:
-                    print(f"读取配置文件时出错: {e}")
-                    # 使用默认起始日期
-                    start_date = datetime(2023, 1, 1)
-                
-                # 计算从起始日期到当前日期的天数
-                days_difference = (current_date - start_date).days
-                
-                # 计算当前是第几周，向上取整
-                week_number = days_difference // 7 + 1
-                
-                # 计算这一周的开始日期（周一）和结束日期（周日）
-                start_of_week = start_date + timedelta(weeks=(week_number - 1))
-                end_of_week = start_of_week + timedelta(days=6)
-                
-                # 格式化文件名
-                file_name = f"第{week_number}周({start_of_week.strftime('%m.%d')}~{end_of_week.strftime('%m.%d')}).xls"
-                
-                # 尝试从配置文件获取Excel路径
-                try:
-                    excel_path = config.get('excel_path', '')
-                    if not excel_path:
-                        # 如果配置文件中没有路径，使用默认路径
-                        excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "昼夜表")
-                except:
-                    # 如果出错，使用默认路径
-                    excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "昼夜表")
-                
-                # 确保路径存在
-                if not os.path.exists(excel_path):
-                    os.makedirs(excel_path)
-                
-                # 构建完整的文件路径
-                excel_file = os.path.join(excel_path, file_name).replace('\\', '/')
-                
-                # 检查文件是否存在
-                if os.path.exists(excel_file):
-                    opened_successfully = False
-                    for attempt in range(1, 3): # 尝试两次
-                        try:
-                            print(f"尝试第 {attempt} 次打开昼夜表: {excel_file}")
-                            # 使用系统默认程序打开Excel文件
-                            if sys.platform == 'win32':
-                                os.startfile(excel_file)
-                            elif sys.platform == 'darwin':  # macOS
-                                subprocess.call(['open', excel_file])
-                            else:  # Linux
-                                subprocess.call(['xdg-open', excel_file])
-                            print(f"已成功启动打开昼夜表的命令: {excel_file}")
-                            opened_successfully = True
-                            break # 如果成功启动命令，则跳出循环
-                        except Exception as e_open:
-                            print(f"第 {attempt} 次打开昼夜表时出错: {e_open}")
-                            if attempt == 2: # 如果是第二次尝试仍然失败
-                                print(f"两次尝试打开昼夜表均失败: {excel_file}")
-                    
-                    # if opened_successfully:
-                    #     print(f"已打开昼夜表: {excel_file}") # 这行可以保留，也可以根据实际情况调整，因为os.startfile等是异步的
+                config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+                if os.path.exists(config_path):
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                    start_date = datetime.strptime(config.get('start_date', '2023-01-01'), '%Y-%m-%d')
                 else:
-                    print(f"昼夜表文件不存在: {excel_file}")
+                    # 如果没有配置文件，使用默认起始日期
+                    start_date = datetime(2023, 1, 1)
             except Exception as e:
-                print(f"打开昼夜表时出错: {e}")
+                print(f"读取配置文件时出错: {e}")
+                # 使用默认起始日期
+                start_date = datetime(2023, 1, 1)
+            
+            # 计算从起始日期到当前日期的天数
+            days_difference = (current_date - start_date).days
+            
+            # 计算当前是第几周，向上取整
+            week_number = days_difference // 7 + 1
+            
+            # 计算这一周的开始日期（周一）和结束日期（周日）
+            start_of_week = start_date + timedelta(weeks=(week_number - 1))
+            end_of_week = start_of_week + timedelta(days=6)
+            
+            # 格式化文件名
+            file_name = f"第{week_number}周({start_of_week.strftime('%m.%d')}~{end_of_week.strftime('%m.%d')}).xls"
+            
+            # 尝试从配置文件获取Excel路径
+            try:
+                excel_path = config.get('excel_path', '')
+                if not excel_path:
+                    # 如果配置文件中没有路径，使用默认路径
+                    excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "昼夜表")
+            except:
+                # 如果出错，使用默认路径
+                excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "昼夜表")
+            
+            # 确保路径存在
+            if not os.path.exists(excel_path):
+                os.makedirs(excel_path)
+            
+            # 构建完整的文件路径
+            excel_file = os.path.join(excel_path, file_name).replace('\\', '/')
+            
+            # 检查文件是否存在
+            if os.path.exists(excel_file):
+                opened_successfully = False
+                for attempt in range(1, 3): # 尝试两次
+                    try:
+                        print(f"尝试第 {attempt} 次打开昼夜表: {excel_file}")
+                        # 使用系统默认程序打开Excel文件
+                        if sys.platform == 'win32':
+                            os.startfile(excel_file)
+                        elif sys.platform == 'darwin':  # macOS
+                            subprocess.call(['open', excel_file])
+                        else:  # Linux
+                            subprocess.call(['xdg-open', excel_file])
+                        print(f"已成功启动打开昼夜表的命令: {excel_file}")
+                        opened_successfully = True
+                        break # 如果成功启动命令，则跳出循环
+                    except Exception as e_open:
+                        print(f"第 {attempt} 次打开昼夜表时出错: {e_open}")
+                        if attempt == 2: # 如果是第二次尝试仍然失败
+                            print(f"两次尝试打开昼夜表均失败: {excel_file}")
+            else:
+                print(f"昼夜表文件不存在: {excel_file}")
+        except Exception as e:
+            print(f"打开昼夜表时出错: {e}")
     
     def contextMenuEvent(self, event):
         """右键菜单事件"""
@@ -473,20 +633,82 @@ class FloatingButton(QWidget):
             QMenu::item:selected {
                 background-color: rgba(56, 189, 248, 0.2);
             }
+            QMenu::separator {
+                height: 1px;
+                background-color: rgba(255, 255, 255, 0.1);
+                margin: 5px 15px;
+            }
         """)
         
         # 添加打开Excel选项
         excel_action = QAction("打开昼夜表", self)
-        excel_action.triggered.connect(lambda: self.mouseDoubleClickEvent(event))
+        excel_action.triggered.connect(self.open_excel_file)
+        
+        # 添加打开CSV选项
+        csv_action = QAction("打开五分钟记录", self)
+        csv_action.triggered.connect(self.open_csv_file)
+        
+        # 添加热力图显示/隐藏选项
+        heatmap_action = QAction("隐藏热力图" if self.heatmap_visible else "显示热力图", self)
+        heatmap_action.triggered.connect(self.toggle_heatmap)
+        
+        # 添加透明度调节子菜单
+        opacity_menu = QMenu("调整透明度", self)
+        opacity_menu.setStyleSheet(menu.styleSheet())
+        
+        opacity_values = [("100%", 1.0), ("80%", 0.8), ("60%", 0.6), ("40%", 0.4)]
+        for label, value in opacity_values:
+            action = QAction(label, self)
+            action.triggered.connect(lambda checked, v=value: self.set_opacity(v))
+            # 标记当前选中的透明度
+            if abs(self.opacity - value) < 0.01:
+                action.setIcon(self.style().standardIcon(self.style().SP_DialogApplyButton))
+            opacity_menu.addAction(action)
+        
+        menu.addAction(excel_action)
+        menu.addAction(csv_action)
+        menu.addSeparator()
+        menu.addAction(heatmap_action)
+        menu.addMenu(opacity_menu)
+        menu.addSeparator()
         
         # 添加退出选项
         exit_action = QAction("退出", self)
         exit_action.triggered.connect(self.exit_application)
-        
-        menu.addAction(excel_action)
-        menu.addSeparator()
         menu.addAction(exit_action)
+        
         menu.exec_(event.globalPos())
+    
+    def toggle_heatmap(self):
+        """切换热力图显示状态"""
+        self.heatmap_visible = not self.heatmap_visible
+        self.heatmap.setVisible(self.heatmap_visible)
+        # 调整窗口大小
+        if self.heatmap_visible:
+            self.setFixedSize(220, 280)
+        else:
+            self.setFixedSize(220, 180)
+    
+    def set_opacity(self, value):
+        """设置窗口透明度"""
+        self.opacity = value
+        self.setWindowOpacity(value)
+    
+    def open_csv_file(self):
+        """打开当日的五分钟记录CSV文件"""
+        try:
+            csv_path = os.path.join("statistics", "five_minute_logs", f"五分钟记录_{self.current_date}.csv")
+            if os.path.exists(csv_path):
+                if sys.platform == 'win32':
+                    os.startfile(csv_path)
+                elif sys.platform == 'darwin':  # macOS
+                    subprocess.call(['open', csv_path])
+                else:  # Linux
+                    subprocess.call(['xdg-open', csv_path])
+            else:
+                print(f"CSV文件不存在: {csv_path}")
+        except Exception as e:
+            print(f"打开CSV文件时出错: {e}")
     
     def exit_application(self):
         """退出应用程序"""
