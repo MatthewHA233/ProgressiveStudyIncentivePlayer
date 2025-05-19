@@ -168,7 +168,7 @@ class HeatmapWidget(QWidget):
         self.margin_bottom = 5
         self.margin_left = 10  # 恢复合理的左边距
         self.margin_right = 10  # 对称的右边距
-        self.column_width = 20  # 稍微减小列宽以适应更多列
+        self.column_width = 22  # 固定列宽
     
     def update_data(self, csv_path):
         """从CSV文件更新数据"""
@@ -210,11 +210,8 @@ class HeatmapWidget(QWidget):
         current_index = current_minute // 5
         
         # 计算显示范围（前9小时到当前小时）
-        start_hour = 6  # 固定从6点开始
-        end_hour = 22   # 固定到22点结束
-        
-        # 计算总列数
-        total_hours = end_hour - start_hour
+        start_hour = max(6, current_hour - 8)  # 从6点开始，显示9小时
+        end_hour = min(22, current_hour + 1)   # 到22点结束
         
         # 计算可用绘制区域
         available_width = self.width() - self.margin_left - self.margin_right
@@ -223,15 +220,22 @@ class HeatmapWidget(QWidget):
         # 计算每个小时格子的高度
         cell_height = int(available_height / 12)  # 转换为整数
         
+        # 计算总列数和总宽度
+        total_hours = end_hour - start_hour
+        if total_hours <= 0:
+            return
+            
+        total_width = total_hours * self.column_width
+        
         # 计算热力图的起始x坐标，使其居中
-        start_x = self.margin_left
+        start_x = self.margin_left + (available_width - total_width) // 2
         
         # 绘制小时标记
         painter.setPen(QColor(200, 200, 200))
         painter.setFont(QFont("Arial", 8))
         
         for hour in range(start_hour, end_hour):
-            x = start_x + (hour - start_hour) * self.column_width
+            x = start_x + int((hour - start_hour) * self.column_width)
             # 绘制小时文本
             hour_text = f"{hour:02d}"
             text_rect = painter.fontMetrics().boundingRect(hour_text)
@@ -245,12 +249,12 @@ class HeatmapWidget(QWidget):
         
         # 绘制每个小时的格子
         for hour in range(start_hour, end_hour):
-            x = start_x + (hour - start_hour) * self.column_width
+            x = start_x + int((hour - start_hour) * self.column_width)
             
             if hour in self.hourly_data:
                 for i, status in enumerate(self.hourly_data[hour]):
                     if status is not None:
-                        y = self.margin_top + i * cell_height
+                        y = self.margin_top + int(i * cell_height)
                         rect = QRect(x, y, self.column_width - 1, cell_height - 1)
                         
                         # 创建渐变色
@@ -272,10 +276,11 @@ class HeatmapWidget(QWidget):
         # 绘制当前时间指示线
         if current_hour >= start_hour and current_hour < end_hour:
             # 计算当前时间对应的y坐标
-            current_y = self.margin_top + current_index * cell_height + cell_height / 2
+            current_y = self.margin_top + int(current_index * cell_height) + int(cell_height / 2)
             
             # 计算当前时间列的x坐标
-            current_x = start_x + (current_hour - start_hour) * self.column_width
+            current_hour_offset = current_hour - start_hour
+            current_x = start_x + int(current_hour_offset * self.column_width)
             
             # 设置红色渐变线
             painter.setPen(QPen(QColor(255, 50, 50, 200), 2))
