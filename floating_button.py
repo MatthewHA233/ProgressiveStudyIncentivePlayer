@@ -184,10 +184,17 @@ class HeatmapWidget(QWidget):
                     if hour not in self.hourly_data:
                         self.hourly_data[hour] = [None] * 12  # 12个5分钟时段
                     
-                    # 计算5分钟时段的索引
-                    index = minute // 5
-                    if index < 12:  # 确保索引在范围内
-                        self.hourly_data[hour][index] = status == '高效'
+                    # 处理特殊情况：00分的数据存储在上一个小时的最后一个格子
+                    if minute == 0:
+                        prev_hour = (hour - 1) if hour > 0 else 23
+                        if prev_hour not in self.hourly_data:
+                            self.hourly_data[prev_hour] = [None] * 12
+                        self.hourly_data[prev_hour][11] = status == '高效'  # 存储在上一个小时的最后一个格子
+                    else:
+                        # 其他时间正常存储
+                        index = (minute - 5) // 5
+                        if 0 <= index < 11:  # 注意这里改为11，因为最后一个格子(55-00)要特殊处理
+                            self.hourly_data[hour][index] = status == '高效'
             
             # 检查是否需要更新显示
             current_hour = datetime.now().hour
@@ -207,7 +214,6 @@ class HeatmapWidget(QWidget):
         now = datetime.now()
         current_hour = now.hour
         current_minute = now.minute
-        current_index = current_minute // 5
         
         # 计算显示范围（前9小时到当前小时）
         start_hour = max(6, current_hour - 8)  # 从6点开始，显示9小时
@@ -219,6 +225,7 @@ class HeatmapWidget(QWidget):
         
         # 计算每个小时格子的高度
         cell_height = int(available_height / 12)  # 转换为整数
+        grid_height = cell_height * 12  # 总格子高度
         
         # 计算总列数和总宽度
         total_hours = end_hour - start_hour
@@ -242,10 +249,10 @@ class HeatmapWidget(QWidget):
             text_x = x + (self.column_width - text_rect.width()) // 2
             painter.drawText(text_x, 15, hour_text)
             
-            # 绘制分隔线
+            # 绘制分隔线，确保完全对齐格子范围
             if hour > start_hour:  # 不绘制第一条分隔线
                 line_x = x - 1
-                painter.drawLine(line_x, self.margin_top, line_x, self.height() - self.margin_bottom)
+                painter.drawLine(line_x, self.margin_top, line_x, self.margin_top + grid_height)
         
         # 绘制每个小时的格子
         for hour in range(start_hour, end_hour):
@@ -275,8 +282,21 @@ class HeatmapWidget(QWidget):
         
         # 绘制当前时间指示线
         if current_hour >= start_hour and current_hour < end_hour:
-            # 计算当前时间对应的y坐标
-            current_y = self.margin_top + int(current_index * cell_height) + int(cell_height / 2)
+            # 计算当前时间在总高度中的相对位置（基于1-60分钟）
+            # 将0-59分钟映射到1-60
+            minute_for_calculation = current_minute + 1
+            # 计算相对于块底部的位置
+            block_index = (minute_for_calculation - 1) // 5  # 确定在哪个5分钟块内
+            next_block_boundary = (block_index + 1) * 5  # 下一个块的边界分钟数
+            prev_block_boundary = block_index * 5  # 当前块的起始分钟数
+            
+            # 计算在当前块内的相对位置
+            block_y_start = self.margin_top + int(block_index * cell_height)
+            block_y_end = block_y_start + cell_height
+            
+            # 计算在当前块内的精确位置
+            within_block_position = (minute_for_calculation - prev_block_boundary - 1) / 5.0
+            current_y = block_y_end - int(cell_height * (1 - within_block_position))
             
             # 计算当前时间列的x坐标
             current_hour_offset = current_hour - start_hour
