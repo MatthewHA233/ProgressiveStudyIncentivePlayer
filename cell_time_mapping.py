@@ -17,9 +17,9 @@ NIGHT_START_COL = 'A'  # 夜表起始列
 
 # 昼表和夜表的时间范围
 DAY_START_TIME = time(6, 5)  # 昼表开始时间 06:05
-DAY_END_TIME = time(15, 0)  # 昼表结束时间 15:00
+DAY_END_TIME = time(15, 4)  # 昼表结束时间 15:04
 NIGHT_START_TIME = time(15, 5)  # 夜表开始时间 15:05
-NIGHT_END_TIME = time(22, 0)  # 夜表结束时间 22:00
+NIGHT_END_TIME = time(22, 4)  # 夜表结束时间 22:04，修改以包含22:00
 
 def get_column_letter(index):
     """将数字索引转换为Excel列字母"""
