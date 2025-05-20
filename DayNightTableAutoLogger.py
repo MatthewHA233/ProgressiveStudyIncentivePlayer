@@ -185,10 +185,18 @@ class DayNightTableLogger:
                 pass
     
     def __del__(self):
-        """析构函数，确保Excel应用程序被正确关闭"""
+        """析构函数，确保资源被正确释放"""
         try:
+            # 确保Excel应用程序被关闭
             if self.excel:
                 self.excel.Quit()
+                self.excel = None
+            
+            # 确保窗口被关闭
+            if self.window:
+                self.window.quit()
+                self.window.destroy()
+                self.window = None
         except:
             pass
     
@@ -273,164 +281,189 @@ class DayNightTableLogger:
 
     def create_window(self, test_time=None):
         """创建选择窗口"""
-        if self.window is not None:
-            self.window.destroy()
-        
-        # 从配置中获取字体
-        font_name = self.config.get('font', 'Arial')
-        
-        self.window = ctk.CTk()
-        self.window.title("昼夜表记录")
-        
-        # 设置更亮的外观
-        ctk.set_appearance_mode("light")  # 使用亮色主题
-        ctk.set_default_color_theme("blue")  # 使用蓝色主题
-        
-        # 获取当前时间或测试时间
-        if test_time:
-            now = test_time
-        else:
-            now = datetime.now()
-        
-        time_str = now.strftime("%H:%M")
-        
-        # 获取单元格坐标
-        weekday = now.weekday()  # 0是周一，6是周日
-        self.current_cell = cell_time_mapping.get_cell_for_time(now.time(), weekday)
-        
-        if not self.current_cell:
-            print(f"当前时间 {time_str} 不在昼夜表范围内")
-            if self.test_mode:
-                # 在测试模式下，如果当前时间不在范围内，使用下一个有效时间
-                test_times = [
-                    datetime.now().replace(hour=6, minute=5, second=0),  # 早上6:05
-                    datetime.now().replace(hour=15, minute=5, second=0)  # 下午15:05
-                ]
-                
-                # 选择最接近当前时间的有效时间
-                now = min(test_times, key=lambda x: abs((x - datetime.now()).total_seconds()))
-                time_str = now.strftime("%H:%M")
-                weekday = now.weekday()
-                self.current_cell = cell_time_mapping.get_cell_for_time(now.time(), weekday)
-                
-                if not self.current_cell:
-                    print(f"测试模式下也无法找到有效单元格，退出")
+        try:
+            if self.window is not None:
+                self.window.quit()  # 停止已存在窗口的mainloop
+                self.window.destroy()
+            
+            # 从配置中获取字体
+            font_name = self.config.get('font', 'Arial')
+            
+            self.window = ctk.CTk()
+            self.window.title("昼夜表记录")
+            
+            # 设置更亮的外观
+            ctk.set_appearance_mode("light")  # 使用亮色主题
+            ctk.set_default_color_theme("blue")  # 使用蓝色主题
+            
+            # 获取当前时间或测试时间
+            if test_time:
+                now = test_time
+            else:
+                now = datetime.now()
+            
+            time_str = now.strftime("%H:%M")
+            
+            # 获取单元格坐标
+            weekday = now.weekday()  # 0是周一，6是周日
+            self.current_cell = cell_time_mapping.get_cell_for_time(now.time(), weekday)
+            
+            if not self.current_cell:
+                print(f"当前时间 {time_str} 不在昼夜表范围内")
+                if self.test_mode:
+                    # 在测试模式下，如果当前时间不在范围内，使用下一个有效时间
+                    test_times = [
+                        datetime.now().replace(hour=6, minute=5, second=0),  # 早上6:05
+                        datetime.now().replace(hour=15, minute=5, second=0)  # 下午15:05
+                    ]
+                    
+                    # 选择最接近当前时间的有效时间
+                    now = min(test_times, key=lambda x: abs((x - datetime.now()).total_seconds()))
+                    time_str = now.strftime("%H:%M")
+                    weekday = now.weekday()
+                    self.current_cell = cell_time_mapping.get_cell_for_time(now.time(), weekday)
+                    
+                    if not self.current_cell:
+                        print(f"测试模式下也无法找到有效单元格，退出")
+                        self.window.destroy()
+                        return
+                else:
                     self.window.destroy()
                     return
+            
+            column, row = self.current_cell
+            
+            # 创建主标签 - 当前时间
+            ctk.CTkLabel(
+                self.window, 
+                text=f"当前时间: {time_str}", 
+                font=(font_name, 16, "bold"),  # 使用配置的字体
+                text_color="#1E88E5"  # 使用蓝色文本
+            ).pack(pady=(10, 0))
+            
+            # 创建单元格标签 - 使用较小的字体和较淡的颜色
+            ctk.CTkLabel(
+                self.window, 
+                text=f"单元格: {column}{row}", 
+                font=(font_name, 12),  # 较小的字体
+                text_color="#9E9E9E"  # 较淡的灰色
+            ).pack(pady=(0, 5))
+            
+            # 创建活动类型下拉框
+            ctk.CTkLabel(
+                self.window, 
+                text="事情类型:", 
+                font=(font_name, 14),
+                text_color="#333333"  # 深灰色文本
+            ).pack(pady=(5, 0))
+            
+            # 创建StringVar来存储选择的活动类型
+            self.activity_var = ctk.StringVar()
+            
+            # 设置默认值为上次选择的活动类型或第一个活动类型
+            if self.last_activity_type and self.last_activity_type in self.activity_types:
+                self.activity_var.set(self.last_activity_type)
             else:
-                self.window.destroy()
-                return
-        
-        column, row = self.current_cell
-        
-        # 创建主标签 - 当前时间
-        ctk.CTkLabel(
-            self.window, 
-            text=f"当前时间: {time_str}", 
-            font=(font_name, 16, "bold"),  # 使用配置的字体
-            text_color="#1E88E5"  # 使用蓝色文本
-        ).pack(pady=(10, 0))
-        
-        # 创建单元格标签 - 使用较小的字体和较淡的颜色
-        ctk.CTkLabel(
-            self.window, 
-            text=f"单元格: {column}{row}", 
-            font=(font_name, 12),  # 较小的字体
-            text_color="#9E9E9E"  # 较淡的灰色
-        ).pack(pady=(0, 5))
-        
-        # 创建活动类型下拉框
-        ctk.CTkLabel(
-            self.window, 
-            text="事情类型:", 
-            font=(font_name, 14),
-            text_color="#333333"  # 深灰色文本
-        ).pack(pady=(5, 0))
-        
-        # 创建StringVar来存储选择的活动类型
-        self.activity_var = ctk.StringVar()
-        
-        # 设置默认值为上次选择的活动类型或第一个活动类型
-        if self.last_activity_type and self.last_activity_type in self.activity_types:
-            self.activity_var.set(self.last_activity_type)
-        else:
-            self.activity_var.set(self.activity_types[0])
-        
-        # 创建下拉框
-        activity_dropdown = ctk.CTkComboBox(
-            self.window,
-            values=self.activity_types,
-            variable=self.activity_var,
-            width=220,  # 增加宽度
-            font=(font_name, 12),  # 使用配置的字体
-            border_color="#1E88E5",  # 蓝色边框
-            button_color="#1E88E5",  # 蓝色按钮
-            dropdown_hover_color="#42A5F5"  # 浅蓝色悬停效果
-        )
-        activity_dropdown.pack(pady=5)
-        
-        ctk.CTkLabel(
-            self.window, 
-            text="请选择完成状态:", 
-            font=(font_name, 14),
-            text_color="#333333"  # 深灰色文本
-        ).pack(pady=5)
-        
-        # 创建按钮框架
-        button_frame = ctk.CTkFrame(self.window, fg_color="transparent")
-        button_frame.pack(pady=10)
-        
-        # 创建按钮 - 增加宽度
-        ctk.CTkButton(
-            button_frame, 
-            text="✓", 
-            font=(font_name, 20, "bold"),
-            width=80,  # 增加宽度
-            height=35,  # 稍微减少高度
-            fg_color="#4CAF50",  # 绿色背景
-            hover_color="#388E3C",  # 深绿色悬停效果
-            command=lambda: self.handle_button_click("star")
-        ).pack(side="left", padx=10)
-        
-        ctk.CTkButton(
-            button_frame, 
-            text="○", 
-            font=(font_name, 20, "bold"),
-            width=80,  # 增加宽度
-            height=35,  # 稍微减少高度
-            fg_color="#FFC107",  # 黄色背景
-            hover_color="#FFA000",  # 深黄色悬停效果
-            text_color="#000000",  # 黑色文本
-            command=lambda: self.handle_button_click("empty_star")
-        ).pack(side="left", padx=10)
-        
-        ctk.CTkButton(
-            button_frame, 
-            text="×", 
-            font=(font_name, 20, "bold"),
-            width=80,  # 增加宽度
-            height=35,  # 稍微减少高度
-            fg_color="#F44336",  # 红色背景
-            hover_color="#D32F2F",  # 深红色悬停效果
-            command=lambda: self.handle_button_click("none")
-        ).pack(side="left", padx=10)
-        
-        # 设置自动关闭计时器（60秒后自动关闭）
-        self.window.after(60000, self.auto_close_window)
-        
-        # 设置窗口大小并确保它不会被内容撑大
-        self.window.geometry("400x250")
-        self.window.minsize(400, 250)  # 设置最小尺寸
-        self.window.maxsize(400, 250)  # 设置最大尺寸，防止调整
-        
-        # 窗口置顶
-        self.window.attributes('-topmost', True)
-        
-        # 窗口居中显示
-        self.center_window()
-        
-        self.window.protocol("WM_DELETE_WINDOW", self.on_window_close)
-        self.window.mainloop()
+                self.activity_var.set(self.activity_types[0])
+            
+            # 创建下拉框
+            activity_dropdown = ctk.CTkComboBox(
+                self.window,
+                values=self.activity_types,
+                variable=self.activity_var,
+                width=220,  # 增加宽度
+                font=(font_name, 12),  # 使用配置的字体
+                border_color="#1E88E5",  # 蓝色边框
+                button_color="#1E88E5",  # 蓝色按钮
+                dropdown_hover_color="#42A5F5"  # 浅蓝色悬停效果
+            )
+            activity_dropdown.pack(pady=5)
+            
+            ctk.CTkLabel(
+                self.window, 
+                text="请选择完成状态:", 
+                font=(font_name, 14),
+                text_color="#333333"  # 深灰色文本
+            ).pack(pady=5)
+            
+            # 创建按钮框架
+            button_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+            button_frame.pack(pady=10)
+            
+            # 创建按钮 - 增加宽度
+            ctk.CTkButton(
+                button_frame, 
+                text="✓", 
+                font=(font_name, 20, "bold"),
+                width=80,  # 增加宽度
+                height=35,  # 稍微减少高度
+                fg_color="#4CAF50",  # 绿色背景
+                hover_color="#388E3C",  # 深绿色悬停效果
+                command=lambda: self.handle_button_click("star")
+            ).pack(side="left", padx=10)
+            
+            ctk.CTkButton(
+                button_frame, 
+                text="○", 
+                font=(font_name, 20, "bold"),
+                width=80,  # 增加宽度
+                height=35,  # 稍微减少高度
+                fg_color="#FFC107",  # 黄色背景
+                hover_color="#FFA000",  # 深黄色悬停效果
+                text_color="#000000",  # 黑色文本
+                command=lambda: self.handle_button_click("empty_star")
+            ).pack(side="left", padx=10)
+            
+            ctk.CTkButton(
+                button_frame, 
+                text="×", 
+                font=(font_name, 20, "bold"),
+                width=80,  # 增加宽度
+                height=35,  # 稍微减少高度
+                fg_color="#F44336",  # 红色背景
+                hover_color="#D32F2F",  # 深红色悬停效果
+                command=lambda: self.handle_button_click("none")
+            ).pack(side="left", padx=10)
+            
+            # 设置自动关闭计时器（60秒后自动关闭）
+            self.window.after(60000, self.auto_close_window)
+            
+            # 设置窗口大小并确保它不会被内容撑大
+            self.window.geometry("400x250")
+            self.window.minsize(400, 250)  # 设置最小尺寸
+            self.window.maxsize(400, 250)  # 设置最大尺寸，防止调整
+            
+            # 窗口置顶
+            self.window.attributes('-topmost', True)
+            
+            # 窗口居中显示
+            self.center_window()
+            
+            # 设置窗口关闭协议
+            self.window.protocol("WM_DELETE_WINDOW", self.on_window_close)
+            
+            try:
+                self.window.mainloop()
+            except Exception as e:
+                print(f"窗口主循环出错: {e}")
+            finally:
+                # 确保窗口和变量被清理
+                if self.window:
+                    try:
+                        self.window.quit()
+                        self.window.destroy()
+                        self.window = None
+                    except:
+                        pass
+        except Exception as e:
+            print(f"创建窗口时出错: {e}")
+            if self.window:
+                try:
+                    self.window.quit()
+                    self.window.destroy()
+                    self.window = None
+                except:
+                    pass
     
     def center_window(self):
         """使窗口居中显示"""
@@ -443,38 +476,46 @@ class DayNightTableLogger:
     
     def handle_button_click(self, symbol):
         """处理按钮点击事件"""
-        # 保存当前选择的活动类型
-        self.last_activity_type = self.activity_var.get()
-        
-        # 先关闭窗口，提高用户体验
-        window = self.window
-        self.window = None
-        window.destroy()
-        
-        # 在测试模式下同步处理，否则在后台线程中处理
-        if self.test_mode and symbol != "none":
-            print("测试模式：同步处理按钮操作")
-            self.update_excel(symbol)
-            self.log_study_status(symbol, self.last_activity_type)
-        elif symbol != "none":
-            # 创建后台线程处理Excel更新和CSV记录
-            update_thread = threading.Thread(
-                target=self._process_button_action,
-                args=(symbol, self.last_activity_type)
-            )
-            update_thread.daemon = True
-            update_thread.start()
-        else:
-            # 点击×按钮时只显示通知
-            if hasattr(self, 'current_cell') and self.current_cell:
-                column, row = self.current_cell
-                print(f"已选择不填写单元格 {column}{row}")
-                notification.notify(
-                    title="昼夜表记录",
-                    message=f"已选择不填写单元格 {column}{row}",
-                    app_name="昼夜表自动记录工具",
-                    timeout=5
+        try:
+            # 保存当前选择的活动类型
+            activity_type = self.activity_var.get()
+            self.last_activity_type = activity_type
+            
+            # 先关闭窗口，提高用户体验
+            window = self.window
+            self.window = None
+            
+            # 确保在主线程中销毁窗口和变量
+            if window:
+                window.quit()  # 停止mainloop
+                window.destroy()  # 销毁窗口
+                
+            # 在测试模式下同步处理，否则在后台线程中处理
+            if self.test_mode and symbol != "none":
+                print("测试模式：同步处理按钮操作")
+                self.update_excel(symbol)
+                self.log_study_status(symbol, activity_type)
+            elif symbol != "none":
+                # 创建后台线程处理Excel更新和CSV记录
+                update_thread = threading.Thread(
+                    target=self._process_button_action,
+                    args=(symbol, activity_type)
                 )
+                update_thread.daemon = True
+                update_thread.start()
+            else:
+                # 点击×按钮时只显示通知
+                if hasattr(self, 'current_cell') and self.current_cell:
+                    column, row = self.current_cell
+                    print(f"已选择不填写单元格 {column}{row}")
+                    notification.notify(
+                        title="昼夜表记录",
+                        message=f"已选择不填写单元格 {column}{row}",
+                        app_name="昼夜表自动记录工具",
+                        timeout=5
+                    )
+        except Exception as e:
+            print(f"处理按钮点击时出错: {e}")
     
     def _process_button_action(self, symbol, activity_type):
         """在后台处理按钮操作"""
@@ -489,15 +530,24 @@ class DayNightTableLogger:
     
     def auto_close_window(self):
         """自动关闭窗口"""
-        if self.window:
-            print("窗口超时未操作，自动关闭")
-            self.window.destroy()
-            self.window = None
+        try:
+            if self.window:
+                print("窗口超时未操作，自动关闭")
+                self.window.quit()  # 停止mainloop
+                self.window.destroy()
+                self.window = None
+        except Exception as e:
+            print(f"自动关闭窗口时出错: {e}")
     
     def on_window_close(self):
         """窗口关闭事件处理"""
-        self.window.destroy()
-        self.window = None
+        try:
+            if self.window:
+                self.window.quit()  # 停止mainloop
+                self.window.destroy()
+                self.window = None
+        except Exception as e:
+            print(f"关闭窗口时出错: {e}")
     
     def check_and_show_window(self):
         """检查是否需要显示窗口"""
