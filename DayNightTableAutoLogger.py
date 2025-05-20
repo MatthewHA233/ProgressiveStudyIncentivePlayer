@@ -10,6 +10,7 @@ import customtkinter as ctk
 import cell_time_mapping
 from plyer import notification
 import win32com.client as win32
+import pythoncom
 import csv
 
 # 设置 customtkinter 外观
@@ -70,111 +71,138 @@ class DayNightTableLogger:
 
     def update_excel(self, symbol):
         """使用win32com更新Excel文件中的单元格"""
+        max_retries = 3  # 最大重试次数
+        retry_delay = 2  # 重试间隔（秒）
         excel_app = None
         workbook = None
         
+        # 初始化COM环境
+        pythoncom.CoInitialize()
+        
         try:
-            # 获取单元格坐标
-            column, row = self.current_cell
-            print(f"准备更新单元格: {column}{row}")
-            
-            # 如果是"none"符号，不进行Excel操作，直接返回
-            if symbol == "none":
-                print(f"已选择不填写单元格 {column}{row}")
-                notification.notify(
-                    title="昼夜表记录",
-                    message=f"已选择不填写单元格 {column}{row}",
-                    app_name="昼夜表自动记录工具",
-                    timeout=5
-                )
-                return
-            
-            # 每次创建新的Excel应用程序实例，避免使用可能已损坏的实例
-            excel_app = win32.Dispatch("Excel.Application")
-            excel_app.Visible = False  # 不显示Excel窗口
-            excel_app.DisplayAlerts = False  # 不显示警告
-            
-            # 打开工作簿
-            print(f"正在打开工作簿: {self.excel_file}")
-            workbook = excel_app.Workbooks.Open(self.excel_file)
-            worksheet = workbook.Worksheets(1)  # 第一个工作表
-            
-            # 根据按钮更新单元格内容
-            cell_value = None
-            if symbol == "star":
-                cell_value = "★"
-            elif symbol == "empty_star":
-                cell_value = "☆"
-            
-            # 更新单元格
-            col_index = cell_time_mapping.get_column_index(column)
-            print(f"更新单元格: 行={row}, 列={col_index} ({column}{row})")
-            cell = worksheet.Cells(row, col_index)
-            cell.Value = cell_value
-            
-            # 保存并关闭工作簿
-            workbook.Save()
-            print(f"已保存工作簿")
-            workbook.Close(SaveChanges=True)
-            print(f"已关闭工作簿")
-            
-            # 关闭Excel应用程序
-            excel_app.Quit()
-            print(f"已关闭Excel应用程序")
-            
-            # 释放COM对象
-            del cell
-            del worksheet
-            del workbook
-            del excel_app
-            
-            print(f"已更新单元格 {column}{row} 为 {symbol}")
-            
-            # 显示通知
-            notification.notify(
-                title="昼夜表已更新",
-                message=f"单元格 {column}{row} 已更新为 {symbol}",
-                app_name="昼夜表自动记录工具",
-                timeout=5
-            )
-            
-        except Exception as e:
-            print(f"更新Excel时出错: {e}")
-            try:
-                # 确保column和row已定义
-                if hasattr(self, 'current_cell') and self.current_cell:
+            for attempt in range(max_retries):
+                try:
+                    # 获取单元格坐标
                     column, row = self.current_cell
+                    print(f"准备更新单元格: {column}{row}")
+                    
+                    # 如果是"none"符号，不进行Excel操作，直接返回
+                    if symbol == "none":
+                        print(f"已选择不填写单元格 {column}{row}")
+                        notification.notify(
+                            title="昼夜表记录",
+                            message=f"已选择不填写单元格 {column}{row}",
+                            app_name="昼夜表自动记录工具",
+                            timeout=5
+                        )
+                        return
+                    
+                    # 每次创建新的Excel应用程序实例，避免使用可能已损坏的实例
+                    excel_app = win32.Dispatch("Excel.Application")
+                    excel_app.Visible = False  # 不显示Excel窗口
+                    excel_app.DisplayAlerts = False  # 不显示警告
+                    
+                    # 打开工作簿
+                    print(f"正在打开工作簿: {self.excel_file}")
+                    workbook = excel_app.Workbooks.Open(self.excel_file)
+                    worksheet = workbook.Worksheets(1)  # 第一个工作表
+                    
+                    # 根据按钮更新单元格内容
+                    cell_value = None
+                    if symbol == "star":
+                        cell_value = "★"
+                    elif symbol == "empty_star":
+                        cell_value = "☆"
+                    
+                    # 更新单元格
+                    col_index = cell_time_mapping.get_column_index(column)
+                    print(f"更新单元格: 行={row}, 列={col_index} ({column}{row})")
+                    cell = worksheet.Cells(row, col_index)
+                    cell.Value = cell_value
+                    
+                    # 保存并关闭工作簿
+                    workbook.Save()
+                    print(f"已保存工作簿")
+                    workbook.Close(SaveChanges=True)
+                    print(f"已关闭工作簿")
+                    
+                    # 关闭Excel应用程序
+                    excel_app.Quit()
+                    print(f"已关闭Excel应用程序")
+                    
+                    # 释放COM对象
+                    del cell
+                    del worksheet
+                    del workbook
+                    del excel_app
+                    
+                    print(f"已更新单元格 {column}{row} 为 {symbol}")
+                    
+                    # 显示通知
                     notification.notify(
-                        title="昼夜表更新失败",
-                        message=f"更新单元格 {column}{row} 时出错: {e}",
+                        title="昼夜表已更新",
+                        message=f"单元格 {column}{row} 已更新为 {symbol}",
                         app_name="昼夜表自动记录工具",
                         timeout=5
                     )
-                else:
-                    notification.notify(
-                        title="昼夜表更新失败",
-                        message=f"更新Excel时出错: {e}",
-                        app_name="昼夜表自动记录工具",
-                        timeout=5
-                    )
-            except Exception as notify_error:
-                print(f"发送通知时出错: {notify_error}")
+                    
+                    # 更新成功，跳出重试循环
+                    break
+                    
+                except Exception as e:
+                    print(f"更新Excel时出错 (尝试 {attempt + 1}/{max_retries}): {e}")
+                    
+                    # 清理资源
+                    try:
+                        if workbook is not None:
+                            try:
+                                workbook.Close(SaveChanges=False)
+                            except:
+                                pass
+                        if excel_app is not None:
+                            try:
+                                excel_app.Quit()
+                            except:
+                                pass
+                    except:
+                        pass
+                    
+                    # 如果不是最后一次尝试，等待后重试
+                    if attempt < max_retries - 1:
+                        print(f"等待 {retry_delay} 秒后重试...")
+                        time.sleep(retry_delay)
+                        continue
+                    
+                    # 最后一次尝试也失败，发送通知
+                    try:
+                        if hasattr(self, 'current_cell') and self.current_cell:
+                            column, row = self.current_cell
+                            notification.notify(
+                                title="昼夜表更新失败",
+                                message=f"更新单元格 {column}{row} 失败，请手动更新",
+                                app_name="昼夜表自动记录工具",
+                                timeout=10
+                            )
+                        else:
+                            notification.notify(
+                                title="昼夜表更新失败",
+                                message=f"更新Excel时出错，请手动更新",
+                                app_name="昼夜表自动记录工具",
+                                timeout=10
+                            )
+                    except Exception as notify_error:
+                        print(f"发送通知时出错: {notify_error}")
         finally:
             # 确保资源被释放
             try:
-                # 尝试关闭工作簿
                 if workbook is not None:
                     try:
                         workbook.Close(SaveChanges=False)
-                        print("在finally块中关闭了工作簿")
                     except:
                         pass
-                
-                # 尝试退出Excel应用程序
                 if excel_app is not None:
                     try:
                         excel_app.Quit()
-                        print("在finally块中退出了Excel应用程序")
                     except:
                         pass
                 
@@ -183,7 +211,10 @@ class DayNightTableLogger:
                 gc.collect()
             except:
                 pass
-    
+            
+            # 取消初始化COM环境
+            pythoncom.CoUninitialize()
+
     def __del__(self):
         """析构函数，确保资源被正确释放"""
         try:
@@ -646,24 +677,10 @@ class DayNightTableLogger:
             today = datetime.now().strftime("%Y-%m-%d")
             csv_file = os.path.join(logs_dir, f"五分钟记录_{today}.csv")
             
-            # 使用当前单元格对应的时间，而不是实际点击时间
-            time_str = ""
-            if self.current_cell:
-                column, row = self.current_cell
-                # 从单元格映射获取对应的时间
-                cell_time = cell_time_mapping.get_time_for_cell(column, row)
-                if cell_time:
-                    time_str = cell_time.strftime("%H:%M")
-                else:
-                    # 如果无法获取单元格时间，则使用当前时间的整5分钟
-                    now = datetime.now()
-                    rounded_minute = (now.minute // 5) * 5
-                    time_str = f"{now.hour:02d}:{rounded_minute:02d}"
-            else:
-                # 如果没有当前单元格信息，使用当前时间的整5分钟
-                now = datetime.now()
-                rounded_minute = (now.minute // 5) * 5
-                time_str = f"{now.hour:02d}:{rounded_minute:02d}"
+            # 直接使用当前时间的整5分钟
+            now = datetime.now()
+            rounded_minute = (now.minute // 5) * 5
+            time_str = f"{now.hour:02d}:{rounded_minute:02d}"
             
             # 将符号转换为状态描述
             status = "高效" if symbol == "star" else "普通"
@@ -684,6 +701,7 @@ class DayNightTableLogger:
                 writer.writerow([time_str, status, activity_type, point_str])
             
             print(f"已记录学习状态到: {csv_file}")
+            print(f"记录内容: 时间={time_str}, 状态={status}, 类型={activity_type}, 坐标={point_str}")
             
         except Exception as e:
             print(f"记录学习状态时出错: {e}")

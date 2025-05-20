@@ -231,10 +231,16 @@ def get_time_for_cell(column, row):
         else:
             return None
         
-        # 计算时间
-        minutes = NIGHT_START_TIME.hour * 60 + NIGHT_START_TIME.minute + time_slot * 5
-        hour = minutes // 60
-        minute = minutes % 60
+        # 计算时间（修复夜表时间计算）
+        base_minutes = NIGHT_START_TIME.hour * 60 + NIGHT_START_TIME.minute  # 15:05的分钟数
+        total_minutes = base_minutes + time_slot * 5  # 每个时间槽5分钟
+        
+        # 确保时间不会超过22:00
+        if total_minutes >= 22 * 60:
+            return None
+            
+        hour = total_minutes // 60
+        minute = total_minutes % 60
         return time(hour, minute)
     
     return None
