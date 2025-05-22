@@ -31,10 +31,6 @@ from pathlib import Path
 # 在文件顶部导入argparse
 import argparse
 
-# 直播模式设置 - 设置为True开启直播模式，False关闭直播模式
-# 直播模式下：音乐将静音播放，并执行OBS场景切换
-STREAMING_MODE = True
-
 # 初始化 rich 控制台
 console = Console()
 
@@ -259,6 +255,36 @@ previous_target_time = None  # 新增：跟踪目标时间的变化
 
 # 新增：记录每个级别当前播放次数最低的歌曲集合
 level_played_counts = {}
+
+# 设置OBS直播模式
+def get_streaming_mode():
+    while True:
+        try:
+            streaming_mode_input = console.input("[bold cyan]是否启用OBS直播模式（y/n，默认y）：[/bold cyan]").strip().lower()
+            if not streaming_mode_input or streaming_mode_input == 'y':
+                return True
+            elif streaming_mode_input == 'n':
+                return False
+            else:
+                log_and_print("[bold red]请输入 y 或 n。[/bold red]")
+        except Exception as e:
+            log_and_print(f"[bold red]获取OBS直播模式设置时出错: {e}[/bold red]")
+            return True  # 错误情况下默认启用
+
+# 设置壁纸引擎模式
+def get_wallpaper_engine_mode():
+    while True:
+        try:
+            wallpaper_mode_input = console.input("[bold cyan]是否启用壁纸引擎（y/n，默认y）：[/bold cyan]").strip().lower()
+            if not wallpaper_mode_input or wallpaper_mode_input == 'y':
+                return True
+            elif wallpaper_mode_input == 'n':
+                return False
+            else:
+                log_and_print("[bold red]请输入 y 或 n。[/bold red]")
+        except Exception as e:
+            log_and_print(f"[bold red]获取壁纸引擎模式设置时出错: {e}[/bold red]")
+            return True  # 错误情况下默认启用
 
 # 设置音量
 def get_volume():
@@ -959,9 +985,13 @@ def main_loop():
                                 
                                 # 调用 wallpaper_by_music_apply.py 脚本，并传递 selected_file 和 duration
                                 try:
-                                    subprocess.Popen(['python', 'wallpaper_by_music_apply.py', selected_file, str(duration)])
+                                    if WALLPAPER_ENGINE_MODE:
+                                        subprocess.Popen(['python', 'wallpaper_by_music_apply.py', selected_file, str(duration)])
+                                        log_and_print("[cyan]壁纸引擎：根据音乐切换壁纸[/cyan]")
+                                    else:
+                                        log_and_print("[cyan]壁纸引擎：已禁用[/cyan]")
                                 except Exception as e:
-                                    print(f"调用 wallpaper_by_music_apply.py 时出错: {e}")
+                                    log_and_print(f"[bold red]调用 wallpaper_by_music_apply.py 时出错: {e}[/bold red]")
 
                                 if level != current_level:
                                     current_level = level
@@ -1039,6 +1069,12 @@ def column_to_index(col):
 
 # 获取音量设置
 volume = get_volume()
+
+# 获取OBS直播模式设置
+STREAMING_MODE = get_streaming_mode()
+
+# 获取壁纸引擎模式设置
+WALLPAPER_ENGINE_MODE = get_wallpaper_engine_mode()
 
 # 启动每5分钟播放音效的线程
 five_minute_thread = threading.Thread(target=play_five_minute_effect)

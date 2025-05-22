@@ -669,6 +669,10 @@ class FloatingButton(QWidget):
         excel_action = QAction("打开昼夜表", self)
         excel_action.triggered.connect(self.open_excel_file)
         
+        # 添加启动5分钟间隔弹窗选项
+        auto_logger_action = QAction("启动5分钟间隔弹窗", self)
+        auto_logger_action.triggered.connect(self.start_auto_logger)
+        
         # 添加打开CSV选项
         csv_action = QAction("打开五分钟记录", self)
         csv_action.triggered.connect(self.open_csv_file)
@@ -685,13 +689,56 @@ class FloatingButton(QWidget):
         for label, value in opacity_values:
             action = QAction(label, self)
             action.triggered.connect(lambda checked, v=value: self.set_opacity(v))
-            # 标记当前选中的透明度
             if abs(self.opacity - value) < 0.01:
                 action.setIcon(self.style().standardIcon(self.style().SP_DialogApplyButton))
             opacity_menu.addAction(action)
-        
+
+        # 添加新的功能菜单项
         menu.addAction(excel_action)
+        menu.addAction(auto_logger_action)
         menu.addAction(csv_action)
+        menu.addSeparator()
+
+        # 添加时间管理相关功能
+        time_menu = QMenu("时间管理", self)
+        time_menu.setStyleSheet(menu.styleSheet())
+        
+        time_block_action = QAction("当日块时间总结", self)
+        time_block_action.triggered.connect(self.start_time_block_clicker)
+        time_menu.addAction(time_block_action)
+        
+        today_chart_action = QAction("查看今日学习时长图表", self)
+        today_chart_action.triggered.connect(self.show_today_chart)
+        time_menu.addAction(today_chart_action)
+        
+        history_chart_action = QAction("生成历史图表动画", self)
+        history_chart_action.triggered.connect(self.show_chart_animation)
+        time_menu.addAction(history_chart_action)
+        
+        terminal_replay_action = QAction("查看终端回放", self)
+        terminal_replay_action.triggered.connect(self.show_terminal_replay)
+        time_menu.addAction(terminal_replay_action)
+
+        # 添加设置相关功能
+        settings_menu = QMenu("设置管理", self)
+        settings_menu.setStyleSheet(menu.styleSheet())
+        
+        main_interface_action = QAction("打开主控制界面", self)
+        main_interface_action.triggered.connect(self.open_main_interface)
+        settings_menu.addAction(main_interface_action)
+        settings_menu.addSeparator()
+        
+        wallpaper_action = QAction("壁纸引擎映射管理", self)
+        wallpaper_action.triggered.connect(self.start_wallpaper_music_matcher)
+        settings_menu.addAction(wallpaper_action)
+        
+        activity_type_action = QAction("设置事情类型及坐标", self)
+        activity_type_action.triggered.connect(self.start_activity_type_editor)
+        settings_menu.addAction(activity_type_action)
+
+        # 将子菜单添加到主菜单
+        menu.addMenu(time_menu)
+        menu.addMenu(settings_menu)
         menu.addSeparator()
         menu.addAction(heatmap_action)
         menu.addMenu(opacity_menu)
@@ -703,6 +750,70 @@ class FloatingButton(QWidget):
         menu.addAction(exit_action)
         
         menu.exec_(event.globalPos())
+
+    def start_time_block_clicker(self):
+        """启动时间块点击器"""
+        script_path = os.path.join(os.path.dirname(__file__), "TimeBlockClicker.py")
+        self.run_script(script_path)
+
+    def show_today_chart(self):
+        """显示今日学习时长图表"""
+        script_path = os.path.join(os.path.dirname(__file__), "study_log_chart_popup.py")
+        self.run_script(script_path)
+
+    def show_chart_animation(self):
+        """显示历史图表动画"""
+        script_path = os.path.join(os.path.dirname(__file__), "study_log_chart_animated.py")
+        self.run_script(script_path)
+
+    def show_terminal_replay(self):
+        """显示终端回放"""
+        script_path = os.path.join(os.path.dirname(__file__), "terminal_log_player.py")
+        self.run_script(script_path)
+
+    def start_wallpaper_music_matcher(self):
+        """启动壁纸引擎映射管理"""
+        script_path = os.path.join(os.path.dirname(__file__), "WallpaperMusicMatcher.py")
+        self.run_script(script_path)
+
+    def start_activity_type_editor(self):
+        """启动事情类型编辑器"""
+        script_path = os.path.join(os.path.dirname(__file__), "activity_type_editor.py")
+        self.run_script(script_path)
+
+    def run_script(self, script_path):
+        """运行指定的Python脚本"""
+        try:
+            if os.path.exists(script_path):
+                if sys.platform == "win32":
+                    subprocess.Popen(
+                        ['start', 'cmd', '/k', sys.executable, script_path],
+                        shell=True
+                    )
+                elif sys.platform == "darwin":
+                    subprocess.Popen([
+                        'osascript',
+                        '-e',
+                        f'tell application "Terminal" to do script "{sys.executable} {script_path}"'
+                    ])
+                else:
+                    terminals = ['gnome-terminal', 'xterm', 'konsole']
+                    launched = False
+                    
+                    for terminal in terminals:
+                        try:
+                            subprocess.Popen([terminal, '--', sys.executable, script_path])
+                            launched = True
+                            break
+                        except FileNotFoundError:
+                            continue
+                            
+                    if not launched:
+                        print("无法找到可用的终端模拟器")
+            else:
+                print(f"找不到脚本文件: {script_path}")
+        except Exception as e:
+            print(f"运行脚本时出错: {e}")
     
     def toggle_heatmap(self):
         """切换热力图显示状态"""
@@ -764,6 +875,43 @@ class FloatingButton(QWidget):
         QApplication.restoreOverrideCursor()
         self.glass_panel.hovered = False
         self.glass_panel.update()
+
+    def open_main_interface(self):
+        """打开主控制界面"""
+        script_path = os.path.join(os.path.dirname(__file__), "main_interface.py")
+        try:
+            if os.path.exists(script_path):
+                if sys.platform == "win32":
+                    subprocess.Popen([sys.executable, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+                elif sys.platform == "darwin":
+                    subprocess.Popen([
+                        'osascript',
+                        '-e',
+                        f'tell application "Terminal" to do script "{sys.executable} {script_path}"'
+                    ])
+                else:
+                    terminals = ['gnome-terminal', 'xterm', 'konsole']
+                    launched = False
+                    
+                    for terminal in terminals:
+                        try:
+                            subprocess.Popen([terminal, '--', sys.executable, script_path])
+                            launched = True
+                            break
+                        except FileNotFoundError:
+                            continue
+                            
+                    if not launched:
+                        print("无法找到可用的终端模拟器")
+            else:
+                print(f"找不到主控制界面脚本: {script_path}")
+        except Exception as e:
+            print(f"启动主控制界面时出错: {e}")
+
+    def start_auto_logger(self):
+        """启动5分钟间隔弹窗"""
+        script_path = os.path.join(os.path.dirname(__file__), "DayNightTableAutoLogger.py")
+        self.run_script(script_path)
 
 def create_button():
     """创建悬浮按钮"""
