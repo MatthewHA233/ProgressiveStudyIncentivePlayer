@@ -665,13 +665,13 @@ class FloatingButton(QWidget):
             }
         """)
         
-        # 添加打开Excel选项
-        excel_action = QAction("打开昼夜表", self)
-        excel_action.triggered.connect(self.open_excel_file)
-        
         # 添加启动5分钟间隔弹窗选项
         auto_logger_action = QAction("启动5分钟间隔弹窗", self)
         auto_logger_action.triggered.connect(self.start_auto_logger)
+        
+        # 添加打开Excel选项
+        excel_action = QAction("打开昼夜表", self)
+        excel_action.triggered.connect(self.open_excel_file)
         
         # 添加打开CSV选项
         csv_action = QAction("打开五分钟记录", self)
@@ -694,8 +694,9 @@ class FloatingButton(QWidget):
             opacity_menu.addAction(action)
 
         # 添加新的功能菜单项
-        menu.addAction(excel_action)
         menu.addAction(auto_logger_action)
+        menu.addSeparator()  # 专门的分隔线
+        menu.addAction(excel_action)
         menu.addAction(csv_action)
         menu.addSeparator()
 
