@@ -146,17 +146,127 @@ class TimeBlockClicker:
             print(f"错误: 坐标格式不正确 '{coords_str}'，应为x,y")
             return None
     
-    def process_csv_log(self):
-        """读取当天的CSV日志并处理时间块"""
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        csv_filename = f"五分钟记录_{today_str}.csv"
+    def calculate_study_duration(self, csv_filepath):
+        """计算指定CSV文件的学习时长"""
+        if not os.path.exists(csv_filepath):
+            return 0
+        
+        try:
+            with open(csv_filepath, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                header = next(reader, None)  # 跳过表头
+                if header is None:
+                    return 0
+                
+                # 统计有效记录数量（每条记录代表5分钟）
+                valid_count = 0
+                for row in reader:
+                    if len(row) >= 4:
+                        time_obj = self.parse_time_input(row[0])
+                        if time_obj:
+                            valid_count += 1
+                
+                # 每条记录代表5分钟
+                total_minutes = valid_count * 5
+                return total_minutes
+        
+        except Exception as e:
+            print(f"读取文件 {csv_filepath} 时出错: {e}")
+            return 0
+    
+    def get_recent_csv_files(self):
+        """获取最近15个CSV文件的信息"""
+        log_dir = os.path.join("statistics", "five_minute_logs")
+        if not os.path.exists(log_dir):
+            print(f"错误: 日志目录不存在 {log_dir}")
+            return []
+        
+        # 获取所有CSV文件
+        csv_files = []
+        for filename in os.listdir(log_dir):
+            if filename.startswith("五分钟记录_") and filename.endswith(".csv"):
+                try:
+                    # 提取日期
+                    date_str = filename.replace("五分钟记录_", "").replace(".csv", "")
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    filepath = os.path.join(log_dir, filename)
+                    csv_files.append({
+                        'date': date_obj,
+                        'date_str': date_str,
+                        'filename': filename,
+                        'filepath': filepath
+                    })
+                except ValueError:
+                    continue
+        
+        # 按日期排序，最新的在前
+        csv_files.sort(key=lambda x: x['date'], reverse=True)
+        
+        # 只取最近15个
+        return csv_files[:15]
+    
+    def display_csv_files_menu(self):
+        """显示CSV文件菜单并让用户选择"""
+        recent_files = self.get_recent_csv_files()
+        
+        if not recent_files:
+            print("未找到任何CSV日志文件")
+            return None
+        
+        print("\n" + "="*60)
+        print("最近15天的学习时长统计:")
+        print("="*60)
+        print(f"{'编号':<4} {'日期':<12} {'学习时长':<15} {'文件名'}")
+        print("-"*60)
+        
+        for i, file_info in enumerate(recent_files):
+            duration_minutes = self.calculate_study_duration(file_info['filepath'])
+            hours = duration_minutes // 60
+            minutes = duration_minutes % 60
+            duration_str = f"{hours}小时{minutes}分钟"
+            
+            print(f"{i+1:<4} {file_info['date_str']:<12} {duration_str:<15} {file_info['filename']}")
+        
+        print("-"*60)
+        print("请选择要处理的日期:")
+        print("- 输入编号 (1-{}) 选择对应日期".format(len(recent_files)))
+        print("- 直接按回车选择今天")
+        print("- 输入 'q' 退出")
+        
+        while True:
+            choice = input("\n请输入选择: ").strip()
+            
+            if choice.lower() == 'q':
+                return None
+            
+            if choice == "":
+                # 选择今天
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                return today_str
+            
+            try:
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(recent_files):
+                    selected_file = recent_files[choice_num - 1]
+                    return selected_file['date_str']
+                else:
+                    print(f"错误: 请输入1到{len(recent_files)}之间的数字")
+            except ValueError:
+                print("错误: 请输入有效的数字、回车或'q'")
+    
+    def process_csv_log(self, date_str=None):
+        """读取指定日期的CSV日志并处理时间块"""
+        if date_str is None:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        csv_filename = f"五分钟记录_{date_str}.csv"
         csv_filepath = os.path.join("statistics", "five_minute_logs", csv_filename)
         
         if not os.path.exists(csv_filepath):
-            print(f"错误: 找不到今天的日志文件 {csv_filepath}")
+            print(f"错误: 找不到日期 {date_str} 的日志文件 {csv_filepath}")
             return
         
-        print(f"正在处理日志文件: {csv_filepath}")
+        print(f"\n正在处理日志文件: {csv_filepath}")
         log_entries = []
         try:
             with open(csv_filepath, 'r', newline='', encoding='utf-8') as f:
@@ -275,7 +385,16 @@ class TimeBlockClicker:
 
 def main():
     clicker = TimeBlockClicker()
-    clicker.process_csv_log()
+    
+    # 显示菜单并让用户选择日期
+    selected_date = clicker.display_csv_files_menu()
+    
+    if selected_date is None:
+        print("已取消操作")
+        return
+    
+    print(f"\n开始处理日期: {selected_date}")
+    clicker.process_csv_log(selected_date)
 
 if __name__ == "__main__":
     main() 
