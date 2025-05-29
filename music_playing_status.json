@@ -1,6 +1,7 @@
 {
-  "is_playing": true,
+  "is_playing": false,
   "is_paused": false,
-  "streaming_mode": false,
-  "timestamp": "2025-05-29T20:01:32.990845"
+  "is_finished": true,
+  "streaming_mode": true,
+  "timestamp": "2025-05-29T21:58:19.752214"
 }

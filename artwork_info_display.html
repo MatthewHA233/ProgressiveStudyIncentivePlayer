@@ -374,9 +374,6 @@
     <script>
         // 全局变量
         let lastMusicName = '';
-        let playingStartTime = 0;
-        let musicDuration = 0;
-        let isPlaying = false;
         let scrollIntervals = {};
         
         // 滚动文本相关配置
@@ -525,28 +522,6 @@
         }
         
         /**
-         * 更新音乐播放状态
-         */
-        function updateMusicPlayingStatus() {
-            if (!isPlaying) return;
-            
-            const now = Date.now();
-            const elapsedSeconds = (now - playingStartTime) / 1000;
-            
-            const musicTitle = document.getElementById('music-title');
-            const { title } = parseMusicName(lastMusicName);
-            
-            if (elapsedSeconds < musicDuration) {
-                // 正在播放 - 不再显示播放指示器
-                musicTitle.textContent = title;
-            } else {
-                // 已播放完成
-                musicTitle.textContent = `${title} (已播放)`;
-                isPlaying = false;
-            }
-        }
-        
-        /**
          * 获取并更新艺术品信息
          */
         async function fetchArtworkInfo() {
@@ -598,15 +573,37 @@
                     // 初始化音乐标题滚动
                     initScrollText('music-title', 'music-title');
                     initScrollText('music-artist', 'music-artist');
-                    
-                    // 重置播放状态
-                    playingStartTime = Date.now();
-                    musicDuration = parseDuration(data.music_duration || '0:00');
-                    isPlaying = true;
                 }
                 
-                // 更新音乐播放状态
-                updateMusicPlayingStatus();
+                // 更新音乐播放状态显示（基于music_playing_status.json）
+                try {
+                    const statusTimestamp = Date.now();
+                    const statusResponse = await fetch(`./music_playing_status.json?t=${statusTimestamp}`);
+                    
+                    if (statusResponse.ok && lastMusicName) {
+                        const statusData = await statusResponse.json();
+                        const isFinished = statusData.is_finished || false;
+                        const isPlaying = statusData.is_playing || false;
+                        const isPaused = statusData.is_paused || false;
+                        
+                        const musicTitle = document.getElementById('music-title');
+                        const { title } = parseMusicName(lastMusicName);
+                        
+                        if (isFinished) {
+                            // 如果音乐已完成，显示"(已播放)"标签
+                            musicTitle.textContent = `${title} (已播放)`;
+                        } else if (isPlaying && isPaused) {
+                            // 如果音乐暂停，显示"(暂停)"标签
+                            musicTitle.textContent = `${title} (暂停)`;
+                        } else {
+                            // 其他状态，显示正常标题
+                            musicTitle.textContent = title;
+                        }
+                    }
+                } catch (statusError) {
+                    console.warn('获取音乐播放状态失败:', statusError);
+                    // 状态获取失败时保持默认显示
+                }
                 
             } catch (error) {
                 console.error('获取艺术品信息失败:', error);
@@ -671,9 +668,6 @@
             // 设置定时获取
             setInterval(fetchArtworkInfo, 5000);
             setInterval(fetchStudyInfo, 5000);
-            
-            // 设置更频繁的播放状态更新
-            setInterval(updateMusicPlayingStatus, 1000);
         });
     </script>
 </body>

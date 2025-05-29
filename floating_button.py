@@ -675,9 +675,8 @@ class FloatingButton(QWidget):
             }
         """)
         
-        # 检查播放状态和直播模式
+        # 检查播放状态
         is_playing = self.is_music_playing()
-        streaming_mode = self.get_current_streaming_mode()
         
         # 检查是否暂停
         is_paused = False
@@ -691,41 +690,43 @@ class FloatingButton(QWidget):
             pass
         
         # 添加调试信息
-        print(f"[DEBUG] 音乐状态检查: is_playing={is_playing}, is_paused={is_paused}, streaming_mode={streaming_mode}")
+        print(f"[DEBUG] 右键菜单状态: is_playing={is_playing}, is_paused={is_paused}")
         
-        # 添加音乐控制选项（根据状态和模式动态显示）
+        # 添加音乐控制选项
+        menu_items_added = []
+        
         if is_playing and not is_paused:
-            # 正在播放（未暂停）状态
-            if not streaming_mode:  # 非直播模式才显示暂停和停止
-                # 播放状态下显示暂停
-                pause_music_action = QAction("暂停音乐", self)
-                pause_music_action.triggered.connect(self.pause_music)
-                menu.addAction(pause_music_action)
-                
-                # 显示停止选项
-                stop_music_action = QAction("停止音乐", self)
-                stop_music_action.triggered.connect(self.stop_music)
-                menu.addAction(stop_music_action)
-            else:
-                # 直播模式下，正在播放时不显示任何音乐控制选项
-                pass
+            # 正在播放状态 - 显示暂停和停止选项
+            pause_music_action = QAction("暂停音乐", self)
+            pause_music_action.triggered.connect(self.pause_music)
+            menu.addAction(pause_music_action)
+            menu_items_added.append("暂停音乐")
+            
+            stop_music_action = QAction("停止音乐", self)
+            stop_music_action.triggered.connect(self.stop_music)
+            menu.addAction(stop_music_action)
+            menu_items_added.append("停止音乐")
+            
         elif is_playing and is_paused:
-            # 暂停状态
-            if not streaming_mode:  # 非直播模式才显示恢复和停止
-                # 暂停状态下显示恢复播放
-                resume_music_action = QAction("恢复播放", self)
-                resume_music_action.triggered.connect(self.play_current_music)  # 发送play信号来恢复
-                menu.addAction(resume_music_action)
-                
-                # 显示停止选项
-                stop_music_action = QAction("停止音乐", self)
-                stop_music_action.triggered.connect(self.stop_music)
-                menu.addAction(stop_music_action)
-        else:
-            # 没有播放时，显示播放选项
+            # 暂停状态 - 显示恢复播放和停止选项
+            resume_music_action = QAction("恢复播放", self)
+            resume_music_action.triggered.connect(self.play_current_music)
+            menu.addAction(resume_music_action)
+            menu_items_added.append("恢复播放")
+            
+            stop_music_action = QAction("停止音乐", self)
+            stop_music_action.triggered.connect(self.stop_music)
+            menu.addAction(stop_music_action)
+            menu_items_added.append("停止音乐")
+            
+        elif not is_playing:
+            # 没有播放时 - 显示播放选项
             play_music_action = QAction("播放当前音乐", self)
             play_music_action.triggered.connect(self.play_current_music)
             menu.addAction(play_music_action)
+            menu_items_added.append("播放当前音乐")
+        
+        print(f"[DEBUG] 添加的菜单项: {menu_items_added}")
         
         # 如果有音乐控制选项，添加分隔线
         if menu.actions():

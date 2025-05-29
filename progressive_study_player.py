@@ -38,6 +38,7 @@ console = Console()
 current_music_thread = None
 music_playing_status = False
 music_paused = False
+music_finished = False  # 新增：音乐是否播放完毕
 
 # 信号类用于线程间通信
 class Signal(QObject):
@@ -406,11 +407,6 @@ def play_music(file_path):
             # 更新音乐播放状态
             update_music_status(True, False)
             
-            # 音乐开始播放前，执行OBS场景切换 (Ctrl+Alt+Shift+Q)
-            if STREAMING_MODE:
-                log_and_print("[cyan]直播模式：执行OBS场景切换(开始)[/cyan]")
-                execute_obs_shortcut('ctrl+alt+shift+q') # 直接调用内部函数
-            
             pygame.mixer.music.load(file_path)
             
             # 直播模式下设置音量为0（静音）
@@ -435,21 +431,22 @@ def play_music(file_path):
                     
                 pygame.time.Clock().tick(10)
             
-            # 只有在音乐正常播放完毕或被停止时才执行场景切换和状态更新
-            if STREAMING_MODE and music_playing_status and not music_paused:
-                log_and_print("[cyan]直播模式：执行OBS场景切换(结束)[/cyan]")
-                execute_obs_shortcut('ctrl+alt+shift+a') # 直接调用内部函数
-            
-            # 只有在非暂停状态下才设置为停止
-            if music_playing_status and not music_paused:
-                update_music_status(False, False)
+            # 检查音乐是否自然播放完毕
+            if music_playing_status and not music_paused and not pygame.mixer.music.get_busy():
+                # 音乐自然播放完毕
+                update_music_status(False, False, True)  # is_finished=True
+                log_and_print("[cyan]音乐播放完毕 - 状态: is_playing=False, is_paused=False, is_finished=True[/cyan]")
+            elif music_playing_status and not music_paused:
+                # 音乐被停止
+                update_music_status(False, False, False)  # is_finished=False
+                log_and_print("[cyan]音乐被停止 - 状态: is_playing=False, is_paused=False, is_finished=False[/cyan]")
                 
         except pygame.error as e:
             log_and_print(f"[bold red]无法播放文件 {file_path}: {e}[/bold red]")
-            update_music_status(False, False)
+            update_music_status(False, False, False)
         except Exception as e: # 增加一个通用的异常捕获，以防 pyautogui 出错等
-            log_and_print(f"[bold red]播放音乐或执行场景切换时发生未知错误: {e}[/bold red]")
-            update_music_status(False, False)
+            log_and_print(f"[bold red]播放音乐时发生未知错误: {e}[/bold red]")
+            update_music_status(False, False, False)
 
 
     music_thread = threading.Thread(target=play)
@@ -895,23 +892,44 @@ def get_music_status_path():
     """获取音乐播放状态文件路径"""
     return os.path.join(os.path.dirname(__file__), "music_playing_status.json")
 
-def update_music_status(is_playing, is_paused=False):
-    """更新音乐播放状态到文件"""
-    global music_playing_status, music_paused
+def update_music_status(is_playing, is_paused=False, is_finished=False):
+    """更新音乐播放状态到文件，并处理OBS场景切换"""
+    global music_playing_status, music_paused, music_finished
+    
+    # 记录状态变化前的值，用于检测状态转换
+    old_is_playing = music_playing_status
+    old_is_paused = music_paused
+    old_is_finished = music_finished
+    
     music_playing_status = is_playing
     music_paused = is_paused
+    music_finished = is_finished
     
     try:
         status_path = get_music_status_path()
         status_data = {
             'is_playing': is_playing,
             'is_paused': is_paused,
-            'streaming_mode': STREAMING_MODE,  # 添加直播模式信息
+            'is_finished': is_finished,
+            'streaming_mode': STREAMING_MODE,
             'timestamp': datetime.now().isoformat()
         }
         
         with open(status_path, 'w', encoding='utf-8') as f:
             json.dump(status_data, f, ensure_ascii=False, indent=2)
+        
+        # 智能OBS场景切换：基于状态变化而不是时间
+        if STREAMING_MODE:
+            # 检测从非播放状态到播放状态的转换（包括暂停恢复）
+            if is_playing and not is_paused and (not old_is_playing or old_is_paused or old_is_finished):
+                log_and_print("[cyan]状态变化检测：开始播放 - 触发OBS开始场景[/cyan]")
+                execute_obs_shortcut('ctrl+alt+shift+q')
+            
+            # 检测从播放状态到非播放状态的转换（暂停、停止、完成）
+            elif (old_is_playing and not old_is_paused) and (not is_playing or is_paused or is_finished):
+                log_and_print("[cyan]状态变化检测：停止/暂停/完成播放 - 触发OBS结束场景[/cyan]")
+                execute_obs_shortcut('ctrl+alt+shift+a')
+            
     except Exception as e:
         log_and_print(f"[bold red]更新音乐状态时出错: {e}[/bold red]")
 
@@ -937,16 +955,16 @@ def check_music_control_signal():
                 # 开始播放当前音乐
                 play_current_music_from_signal()
             else:
-                if music_paused and not STREAMING_MODE:
-                    # 如果已暂停且非直播模式，恢复播放
+                if music_paused:
+                    # 如果已暂停，恢复播放
                     resume_music()
-        elif action == 'pause' and not STREAMING_MODE:
+        elif action == 'pause':
             if music_playing_status and not music_paused:
-                # 暂停音乐（仅非直播模式）
+                # 暂停音乐
                 pause_current_music()
-        elif action == 'stop' and not STREAMING_MODE:
+        elif action == 'stop':
             if music_playing_status:
-                # 停止音乐（仅非直播模式）
+                # 停止音乐
                 stop_current_music()
         
         # 删除信号文件以避免重复处理
@@ -1025,19 +1043,6 @@ def play_music_signal_thread(music_path, music_name):
         # 更新音乐播放状态
         update_music_status(True, False)
         
-        # 调用壁纸切换脚本
-        if WALLPAPER_ENGINE_MODE:
-            try:
-                subprocess.Popen(['python', 'wallpaper_by_music_apply.py', music_name, str(duration)])
-                log_and_print("[cyan]壁纸引擎：根据音乐切换壁纸[/cyan]")
-            except Exception as e:
-                log_and_print(f"[bold red]调用壁纸切换脚本时出错: {e}[/bold red]")
-        
-        # 音乐开始播放前，执行OBS场景切换
-        if STREAMING_MODE:
-            log_and_print("[cyan]直播模式：执行OBS场景切换(开始)[/cyan]")
-            execute_obs_shortcut('ctrl+alt+shift+q')
-        
         pygame.mixer.music.load(music_path)
         
         # 直播模式下设置音量为0（静音）
@@ -1062,26 +1067,27 @@ def play_music_signal_thread(music_path, music_name):
                 
             pygame.time.Clock().tick(10)
         
-        # 只有在音乐正常播放完毕或被停止时才执行场景切换和状态更新
-        if STREAMING_MODE and music_playing_status and not music_paused:
-            log_and_print("[cyan]直播模式：执行OBS场景切换(结束)[/cyan]")
-            execute_obs_shortcut('ctrl+alt+shift+a') # 直接调用内部函数
-        
-        # 只有在非暂停状态下才设置为停止
-        if music_playing_status and not music_paused:
-            update_music_status(False, False)
+        # 检查音乐是否自然播放完毕
+        if music_playing_status and not music_paused and not pygame.mixer.music.get_busy():
+            # 音乐自然播放完毕
+            update_music_status(False, False, True)  # is_finished=True
+            log_and_print("[cyan]音乐播放完毕 - 状态: is_playing=False, is_paused=False, is_finished=True[/cyan]")
+        elif music_playing_status and not music_paused:
+            # 音乐被停止
+            update_music_status(False, False, False)  # is_finished=False
+            log_and_print("[cyan]音乐被停止 - 状态: is_playing=False, is_paused=False, is_finished=False[/cyan]")
             
     except pygame.error as e:
         log_and_print(f"[bold red]无法播放文件 {music_path}: {e}[/bold red]")
-        update_music_status(False, False)
-    except Exception as e:
+        update_music_status(False, False, False)
+    except Exception as e: # 增加一个通用的异常捕获，以防 pyautogui 出错等
         log_and_print(f"[bold red]播放音乐时发生未知错误: {e}[/bold red]")
-        update_music_status(False, False)
+        update_music_status(False, False, False)
 
 def pause_current_music():
-    """暂停当前音乐（仅非直播模式）"""
+    """暂停当前音乐"""
     global music_paused
-    if not STREAMING_MODE and music_playing_status:
+    if music_playing_status:  # 移除STREAMING_MODE限制
         try:
             pygame.mixer.music.pause()
             update_music_status(True, True)
@@ -1090,9 +1096,9 @@ def pause_current_music():
             log_and_print(f"[bold red]暂停音乐时出错: {e}[/bold red]")
 
 def resume_music():
-    """恢复音乐播放（仅非直播模式）"""
+    """恢复音乐播放"""
     global music_paused
-    if not STREAMING_MODE and music_playing_status and music_paused:
+    if music_playing_status and music_paused:  # 移除STREAMING_MODE限制
         try:
             pygame.mixer.music.unpause()
             update_music_status(True, False)
@@ -1101,15 +1107,14 @@ def resume_music():
             log_and_print(f"[bold red]恢复音乐播放时出错: {e}[/bold red]")
 
 def stop_current_music():
-    """停止当前音乐（仅非直播模式）"""
+    """停止当前音乐"""
     global current_music_thread, music_playing_status, music_paused
-    if not STREAMING_MODE:
-        try:
-            pygame.mixer.music.stop()
-            update_music_status(False, False)
-            log_and_print("[cyan]音乐已停止 - 状态: is_playing=False, is_paused=False[/cyan]")
-        except Exception as e:
-            log_and_print(f"[bold red]停止音乐时出错: {e}[/bold red]")
+    try:  # 移除STREAMING_MODE限制
+        pygame.mixer.music.stop()
+        update_music_status(False, False, False)  # 停止时设置为未完成状态
+        log_and_print("[cyan]音乐已停止 - 状态: is_playing=False, is_paused=False, is_finished=False[/cyan]")
+    except Exception as e:
+        log_and_print(f"[bold red]停止音乐时出错: {e}[/bold red]")
 
 def main_loop():
     global current_level, previous_time, previous_target_time  # 更新全局变量引用
@@ -1308,7 +1313,7 @@ def main_loop():
         # 检查音乐控制信号
         check_music_control_signal()
 
-        time.sleep(5)
+        time.sleep(2)  # 减少间隔到2秒，让audio_visualizer.html能更及时响应状态变化
 
 # 将列标签转换为索引
 def column_to_index(col):
