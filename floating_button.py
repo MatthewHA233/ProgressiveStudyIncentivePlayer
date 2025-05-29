@@ -2,6 +2,11 @@ import sys
 import os
 import json
 import csv
+import pygame
+from mutagen import File
+import pyautogui
+import threading
+import time
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, 
                             QHBoxLayout, QGraphicsDropShadowEffect, QMenu, QAction)
 from PyQt5.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve, QRect, QRectF
@@ -354,6 +359,11 @@ class FloatingButton(QWidget):
         self.heatmap_timer.timeout.connect(self.update_heatmap)
         self.heatmap_timer.start(300000)  # 每5分钟更新一次
         
+        # 添加状态检查定时器
+        self.status_timer = QTimer(self)
+        self.status_timer.timeout.connect(self.check_status_updates)
+        self.status_timer.start(1000)  # 每秒检查一次
+        
     def initUI(self):
         # 主布局
         main_layout = QVBoxLayout()
@@ -665,6 +675,62 @@ class FloatingButton(QWidget):
             }
         """)
         
+        # 检查播放状态和直播模式
+        is_playing = self.is_music_playing()
+        streaming_mode = self.get_current_streaming_mode()
+        
+        # 检查是否暂停
+        is_paused = False
+        try:
+            status_path = self.get_music_status_path()
+            if os.path.exists(status_path):
+                with open(status_path, 'r', encoding='utf-8') as f:
+                    status = json.load(f)
+                is_paused = status.get('is_paused', False)
+        except:
+            pass
+        
+        # 添加调试信息
+        print(f"[DEBUG] 音乐状态检查: is_playing={is_playing}, is_paused={is_paused}, streaming_mode={streaming_mode}")
+        
+        # 添加音乐控制选项（根据状态和模式动态显示）
+        if is_playing and not is_paused:
+            # 正在播放（未暂停）状态
+            if not streaming_mode:  # 非直播模式才显示暂停和停止
+                # 播放状态下显示暂停
+                pause_music_action = QAction("暂停音乐", self)
+                pause_music_action.triggered.connect(self.pause_music)
+                menu.addAction(pause_music_action)
+                
+                # 显示停止选项
+                stop_music_action = QAction("停止音乐", self)
+                stop_music_action.triggered.connect(self.stop_music)
+                menu.addAction(stop_music_action)
+            else:
+                # 直播模式下，正在播放时不显示任何音乐控制选项
+                pass
+        elif is_playing and is_paused:
+            # 暂停状态
+            if not streaming_mode:  # 非直播模式才显示恢复和停止
+                # 暂停状态下显示恢复播放
+                resume_music_action = QAction("恢复播放", self)
+                resume_music_action.triggered.connect(self.play_current_music)  # 发送play信号来恢复
+                menu.addAction(resume_music_action)
+                
+                # 显示停止选项
+                stop_music_action = QAction("停止音乐", self)
+                stop_music_action.triggered.connect(self.stop_music)
+                menu.addAction(stop_music_action)
+        else:
+            # 没有播放时，显示播放选项
+            play_music_action = QAction("播放当前音乐", self)
+            play_music_action.triggered.connect(self.play_current_music)
+            menu.addAction(play_music_action)
+        
+        # 如果有音乐控制选项，添加分隔线
+        if menu.actions():
+            menu.addSeparator()
+        
         # 添加启动5分钟间隔弹窗选项
         auto_logger_action = QAction("启动5分钟间隔弹窗", self)
         auto_logger_action.triggered.connect(self.start_auto_logger)
@@ -693,9 +759,9 @@ class FloatingButton(QWidget):
                 action.setIcon(self.style().standardIcon(self.style().SP_DialogApplyButton))
             opacity_menu.addAction(action)
 
-        # 添加新的功能菜单项
+        # 添加功能菜单项
         menu.addAction(auto_logger_action)
-        menu.addSeparator()  # 专门的分隔线
+        menu.addSeparator()
         menu.addAction(excel_action)
         menu.addAction(csv_action)
         menu.addSeparator()
@@ -913,6 +979,117 @@ class FloatingButton(QWidget):
         """启动5分钟间隔弹窗"""
         script_path = os.path.join(os.path.dirname(__file__), "DayNightTableAutoLogger.py")
         self.run_script(script_path)
+
+    def load_config(self):
+        """加载配置文件"""
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # 添加默认值
+            defaults = {
+                'music_folder': 'music_library',
+                'streaming_mode': True,
+                'wallpaper_engine_mode': True,
+                'volume': 0.04
+            }
+            
+            for key, default_value in defaults.items():
+                if key not in config:
+                    config[key] = default_value
+                    
+            return config
+        except Exception as e:
+            print(f"加载配置文件时出错: {e}")
+            # 返回默认配置
+            return {
+                'music_folder': 'music_library',
+                'streaming_mode': True,
+                'wallpaper_engine_mode': True,
+                'volume': 0.04
+            }
+
+    def get_music_control_signal_path(self):
+        """获取音乐控制信号文件路径"""
+        return os.path.join(os.path.dirname(__file__), "music_control_signal.json")
+    
+    def get_music_status_path(self):
+        """获取音乐播放状态文件路径"""
+        return os.path.join(os.path.dirname(__file__), "music_playing_status.json")
+    
+    def check_status_updates(self):
+        """定期检查状态更新"""
+        # 这里可以添加任何需要定期检查的逻辑
+        # 目前主要用于确保状态文件是最新的
+        pass
+    
+    def get_current_streaming_mode(self):
+        """获取当前是否为直播模式"""
+        try:
+            # 首先尝试从状态文件读取
+            status_path = self.get_music_status_path()
+            if os.path.exists(status_path):
+                with open(status_path, 'r', encoding='utf-8') as f:
+                    status = json.load(f)
+                streaming_mode = status.get('streaming_mode')
+                if streaming_mode is not None:
+                    return streaming_mode
+            
+            # 如果状态文件中没有，从配置文件读取
+            config = self.load_config()
+            return config.get('streaming_mode', True)
+        except:
+            return True
+    
+    def is_music_playing(self):
+        """检查音乐是否正在播放"""
+        try:
+            status_path = self.get_music_status_path()
+            if os.path.exists(status_path):
+                with open(status_path, 'r', encoding='utf-8') as f:
+                    status = json.load(f)
+                return status.get('is_playing', False)
+            return False
+        except Exception as e:
+            print(f"检查音乐播放状态时出错: {e}")
+            return False
+    
+    def send_music_control_signal(self, action):
+        """发送音乐控制信号给主程序"""
+        try:
+            signal_path = self.get_music_control_signal_path()
+            signal_data = {
+                'action': action,  # 'play', 'pause', 'stop'
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            with open(signal_path, 'w', encoding='utf-8') as f:
+                json.dump(signal_data, f, ensure_ascii=False, indent=2)
+            print(f"已发送音乐控制信号: {action}")
+            
+            # 延迟一小段时间让主程序处理信号并更新状态
+            QTimer.singleShot(100, self.refresh_status)  # 100毫秒后刷新状态
+            
+        except Exception as e:
+            print(f"发送音乐控制信号时出错: {e}")
+    
+    def refresh_status(self):
+        """刷新状态检查（用于信号发送后的状态更新）"""
+        # 这个方法在信号发送后被调用，用于确保状态能被及时检测到
+        pass
+
+    def play_current_music(self):
+        """发送播放音乐信号"""
+        self.send_music_control_signal('play')
+
+    def pause_music(self):
+        """发送暂停音乐信号"""
+        self.send_music_control_signal('pause')
+
+    def stop_music(self):
+        """发送停止音乐信号"""
+        self.send_music_control_signal('stop')
 
 def create_button():
     """创建悬浮按钮"""

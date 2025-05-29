@@ -34,6 +34,11 @@ import argparse
 # 初始化 rich 控制台
 console = Console()
 
+# 音乐播放状态管理
+current_music_thread = None
+music_playing_status = False
+music_paused = False
+
 # 信号类用于线程间通信
 class Signal(QObject):
     show_gif = pyqtSignal()
@@ -398,6 +403,9 @@ def play_music(file_path):
             # 更新到单独的作品信息JSON文件
             update_artwork_info(music_name, formatted_duration)
             
+            # 更新音乐播放状态
+            update_music_status(True, False)
+            
             # 音乐开始播放前，执行OBS场景切换 (Ctrl+Alt+Shift+Q)
             if STREAMING_MODE:
                 log_and_print("[cyan]直播模式：执行OBS场景切换(开始)[/cyan]")
@@ -415,18 +423,33 @@ def play_music(file_path):
             pygame.mixer.music.play()
 
             # 等待音乐播放结束
-            while pygame.mixer.music.get_busy():
+            while music_playing_status:
+                # 如果音乐播放完毕且不是暂停状态，则退出循环
+                if not pygame.mixer.music.get_busy() and not music_paused:
+                    break
+                
+                # 如果暂停了，等待恢复播放或停止
+                if music_paused:
+                    pygame.time.Clock().tick(10)
+                    continue
+                    
                 pygame.time.Clock().tick(10)
             
-            # 音乐播放结束后，执行OBS场景切换 (Ctrl+Alt+Shift+A)
-            if STREAMING_MODE:
+            # 只有在音乐正常播放完毕或被停止时才执行场景切换和状态更新
+            if STREAMING_MODE and music_playing_status and not music_paused:
                 log_and_print("[cyan]直播模式：执行OBS场景切换(结束)[/cyan]")
                 execute_obs_shortcut('ctrl+alt+shift+a') # 直接调用内部函数
+            
+            # 只有在非暂停状态下才设置为停止
+            if music_playing_status and not music_paused:
+                update_music_status(False, False)
                 
         except pygame.error as e:
             log_and_print(f"[bold red]无法播放文件 {file_path}: {e}[/bold red]")
+            update_music_status(False, False)
         except Exception as e: # 增加一个通用的异常捕获，以防 pyautogui 出错等
             log_and_print(f"[bold red]播放音乐或执行场景切换时发生未知错误: {e}[/bold red]")
+            update_music_status(False, False)
 
 
     music_thread = threading.Thread(target=play)
@@ -864,6 +887,230 @@ class AutoShutdown:
                     pass
 # ==== AUTO_SHUTDOWN_END ====
 
+def get_music_control_signal_path():
+    """获取音乐控制信号文件路径"""
+    return os.path.join(os.path.dirname(__file__), "music_control_signal.json")
+
+def get_music_status_path():
+    """获取音乐播放状态文件路径"""
+    return os.path.join(os.path.dirname(__file__), "music_playing_status.json")
+
+def update_music_status(is_playing, is_paused=False):
+    """更新音乐播放状态到文件"""
+    global music_playing_status, music_paused
+    music_playing_status = is_playing
+    music_paused = is_paused
+    
+    try:
+        status_path = get_music_status_path()
+        status_data = {
+            'is_playing': is_playing,
+            'is_paused': is_paused,
+            'streaming_mode': STREAMING_MODE,  # 添加直播模式信息
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        with open(status_path, 'w', encoding='utf-8') as f:
+            json.dump(status_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log_and_print(f"[bold red]更新音乐状态时出错: {e}[/bold red]")
+
+def check_music_control_signal():
+    """检查并处理音乐控制信号"""
+    global current_music_thread, music_playing_status, music_paused
+    
+    try:
+        signal_path = get_music_control_signal_path()
+        if not os.path.exists(signal_path):
+            return
+        
+        with open(signal_path, 'r', encoding='utf-8') as f:
+            signal_data = json.load(f)
+        
+        action = signal_data.get('action')
+        if not action:
+            return
+        
+        # 处理不同的控制信号
+        if action == 'play':
+            if not music_playing_status:
+                # 开始播放当前音乐
+                play_current_music_from_signal()
+            else:
+                if music_paused and not STREAMING_MODE:
+                    # 如果已暂停且非直播模式，恢复播放
+                    resume_music()
+        elif action == 'pause' and not STREAMING_MODE:
+            if music_playing_status and not music_paused:
+                # 暂停音乐（仅非直播模式）
+                pause_current_music()
+        elif action == 'stop' and not STREAMING_MODE:
+            if music_playing_status:
+                # 停止音乐（仅非直播模式）
+                stop_current_music()
+        
+        # 删除信号文件以避免重复处理
+        os.remove(signal_path)
+        
+    except Exception as e:
+        log_and_print(f"[bold red]处理音乐控制信号时出错: {e}[/bold red]")
+
+def play_current_music_from_signal():
+    """从信号触发播放当前音乐（不更新统计）"""
+    global current_music_thread
+    
+    try:
+        # 读取当前音乐信息
+        data_path = os.path.join(os.path.dirname(__file__), "floating_button_data.json")
+        if not os.path.exists(data_path):
+            log_and_print("[bold red]找不到悬浮按钮数据文件[/bold red]")
+            return
+
+        with open(data_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        current_music = data.get('current_music')
+        if not current_music:
+            log_and_print("[bold red]没有找到当前音乐信息[/bold red]")
+            return
+
+        # 获取当前等级
+        current_level_full = data.get('current_level', '')
+        if current_level_full.startswith('『') and current_level_full.endswith('』'):
+            current_level = current_level_full[1:-1]
+        else:
+            current_level = current_level_full.replace('『', '').replace('』', '')
+        
+        if not current_level or current_level == "未知阶段":
+            log_and_print(f"[bold red]无法确定当前音乐等级[/bold red]")
+            return
+
+        # 构建音乐文件路径
+        music_path = os.path.join(music_folder, current_level, current_music)
+        if not os.path.exists(music_path):
+            log_and_print(f"[bold red]音乐文件不存在: {music_path}[/bold red]")
+            return
+
+        log_and_print(f"[cyan]从信号播放音乐: {current_music}[/cyan]")
+
+        # 在新线程中播放音乐
+        current_music_thread = threading.Thread(target=play_music_signal_thread, args=(music_path, current_music))
+        current_music_thread.start()
+
+    except Exception as e:
+        log_and_print(f"[bold red]从信号播放音乐时出错: {e}[/bold red]")
+
+def play_music_signal_thread(music_path, music_name):
+    """信号触发的音乐播放线程（不更新统计）"""
+    global music_playing_status, music_paused
+    
+    try:
+        pygame.mixer.init()
+        
+        # 获取音乐时长
+        audio = File(music_path)
+        if audio is not None and audio.info is not None:
+            duration = audio.info.length
+        else:
+            duration = 0
+        
+        # 格式化音乐时长
+        minutes = int(duration // 60)
+        seconds = int(duration % 60)
+        formatted_duration = f"{minutes}:{seconds:02d}"
+        
+        # 更新作品信息（但不更新播放次数统计）
+        update_artwork_info(music_name, formatted_duration)
+        
+        # 更新音乐播放状态
+        update_music_status(True, False)
+        
+        # 调用壁纸切换脚本
+        if WALLPAPER_ENGINE_MODE:
+            try:
+                subprocess.Popen(['python', 'wallpaper_by_music_apply.py', music_name, str(duration)])
+                log_and_print("[cyan]壁纸引擎：根据音乐切换壁纸[/cyan]")
+            except Exception as e:
+                log_and_print(f"[bold red]调用壁纸切换脚本时出错: {e}[/bold red]")
+        
+        # 音乐开始播放前，执行OBS场景切换
+        if STREAMING_MODE:
+            log_and_print("[cyan]直播模式：执行OBS场景切换(开始)[/cyan]")
+            execute_obs_shortcut('ctrl+alt+shift+q')
+        
+        pygame.mixer.music.load(music_path)
+        
+        # 直播模式下设置音量为0（静音）
+        if STREAMING_MODE:
+            log_and_print("[cyan]直播模式：音乐静音播放[/cyan]")
+            pygame.mixer.music.set_volume(0)
+        else:
+            pygame.mixer.music.set_volume(volume)
+            
+        pygame.mixer.music.play()
+
+        # 等待音乐播放结束
+        while music_playing_status:
+            # 如果音乐播放完毕且不是暂停状态，则退出循环
+            if not pygame.mixer.music.get_busy() and not music_paused:
+                break
+            
+            # 如果暂停了，等待恢复播放或停止
+            if music_paused:
+                pygame.time.Clock().tick(10)
+                continue
+                
+            pygame.time.Clock().tick(10)
+        
+        # 只有在音乐正常播放完毕或被停止时才执行场景切换和状态更新
+        if STREAMING_MODE and music_playing_status and not music_paused:
+            log_and_print("[cyan]直播模式：执行OBS场景切换(结束)[/cyan]")
+            execute_obs_shortcut('ctrl+alt+shift+a') # 直接调用内部函数
+        
+        # 只有在非暂停状态下才设置为停止
+        if music_playing_status and not music_paused:
+            update_music_status(False, False)
+            
+    except pygame.error as e:
+        log_and_print(f"[bold red]无法播放文件 {music_path}: {e}[/bold red]")
+        update_music_status(False, False)
+    except Exception as e:
+        log_and_print(f"[bold red]播放音乐时发生未知错误: {e}[/bold red]")
+        update_music_status(False, False)
+
+def pause_current_music():
+    """暂停当前音乐（仅非直播模式）"""
+    global music_paused
+    if not STREAMING_MODE and music_playing_status:
+        try:
+            pygame.mixer.music.pause()
+            update_music_status(True, True)
+            log_and_print("[cyan]音乐已暂停 - 状态: is_playing=True, is_paused=True[/cyan]")
+        except Exception as e:
+            log_and_print(f"[bold red]暂停音乐时出错: {e}[/bold red]")
+
+def resume_music():
+    """恢复音乐播放（仅非直播模式）"""
+    global music_paused
+    if not STREAMING_MODE and music_playing_status and music_paused:
+        try:
+            pygame.mixer.music.unpause()
+            update_music_status(True, False)
+            log_and_print("[cyan]音乐已恢复播放 - 状态: is_playing=True, is_paused=False[/cyan]")
+        except Exception as e:
+            log_and_print(f"[bold red]恢复音乐播放时出错: {e}[/bold red]")
+
+def stop_current_music():
+    """停止当前音乐（仅非直播模式）"""
+    global current_music_thread, music_playing_status, music_paused
+    if not STREAMING_MODE:
+        try:
+            pygame.mixer.music.stop()
+            update_music_status(False, False)
+            log_and_print("[cyan]音乐已停止 - 状态: is_playing=False, is_paused=False[/cyan]")
+        except Exception as e:
+            log_and_print(f"[bold red]停止音乐时出错: {e}[/bold red]")
+
 def main_loop():
     global current_level, previous_time, previous_target_time  # 更新全局变量引用
     while True:
@@ -1057,6 +1304,9 @@ def main_loop():
         # 检查是否需要启动自动关机程序
         AutoShutdown.check_and_start_shutdown()
         # ==== AUTO_SHUTDOWN_CHECK_END ====
+
+        # 检查音乐控制信号
+        check_music_control_signal()
 
         time.sleep(5)
 
