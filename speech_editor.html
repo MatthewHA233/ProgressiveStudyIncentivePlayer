@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>33娘台词编辑器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: '微软雅黑', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #ff69b4;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #666;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #ff69b4;
+            padding-bottom: 5px;
+        }
+        
+        .config-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .config-label {
+            width: 150px;
+            font-weight: bold;
+        }
+        
+        .config-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .speech-category {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            background: #fafafa;
+        }
+        
+        .category-header {
+            background: #ff69b4;
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .category-content {
+            padding: 15px;
+            display: none;
+        }
+        
+        .category-content.active {
+            display: block;
+        }
+        
+        .speech-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            background: white;
+        }
+        
+        .speech-header {
+            background: #f8f8f8;
+            padding: 8px 12px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .speech-content {
+            padding: 12px;
+        }
+        
+        .speech-field {
+            margin-bottom: 10px;
+        }
+        
+        .speech-field label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        
+        .speech-field input, .speech-field textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        
+        .speech-field textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .btn-primary {
+            background: #ff69b4;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+        
+        .actions {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        .actions .btn {
+            margin: 0 10px;
+            padding: 12px 24px;
+            font-size: 16px;
+        }
+        
+        .add-speech-btn {
+            margin-top: 10px;
+        }
+        
+        .json-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .level-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .level-item input {
+            margin: 0 5px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        .level-item .level-code {
+            width: 60px;
+            font-weight: bold;
+        }
+        
+        .level-item .range-input {
+            width: 60px;
+        }
+        
+        .level-item .theme-input {
+            flex: 1;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐾 33娘台词编辑器 🐾</h1>
+        
+        <!-- 配置区域 -->
+        <div class="section">
+            <div class="section-title">基础配置</div>
+            <div class="config-item">
+                <label class="config-label">音频路径:</label>
+                <input type="text" class="config-input" id="audio-path" placeholder="./audio33/">
+            </div>
+            <div class="config-item">
+                <label class="config-label">高效台词概率:</label>
+                <input type="number" class="config-input" id="efficient-chance" step="0.01" min="0" max="1" placeholder="0.05">
+            </div>
+            <div class="config-item">
+                <label class="config-label">默认重复间隔(毫秒):</label>
+                <input type="number" class="config-input" id="default-repeat-interval" placeholder="300000">
+            </div>
+        </div>
+        
+        <!-- 学习时长等级配置 -->
+        <div class="section">
+            <div class="section-title">学习时长等级配置</div>
+            <div id="duration-levels">
+                <!-- 动态生成 -->
+            </div>
+        </div>
+        
+        <!-- 台词编辑区域 -->
+        <div class="section">
+            <div class="section-title">台词管理</div>
+            <div id="speech-categories">
+                <!-- 动态生成 -->
+            </div>
+        </div>
+        
+        <!-- 操作按钮 -->
+        <div class="actions">
+            <button class="btn btn-primary" onclick="loadData()">加载数据</button>
+            <button class="btn btn-success" onclick="saveData()">保存数据</button>
+            <button class="btn btn-secondary" onclick="exportJson()">导出JSON</button>
+            <button class="btn btn-secondary" onclick="importJson()">导入JSON</button>
+        </div>
+        
+        <!-- JSON输出区域 -->
+        <div class="section" style="display: none;" id="json-section">
+            <div class="section-title">JSON预览</div>
+            <div class="json-output" id="json-output"></div>
+        </div>
+    </div>
+    
+    <script>
+        let speechData = {};
+        
+        // 初始化页面
+        async function init() {
+            // 尝试加载现有数据
+            await loadData();
+        }
+        
+        // 加载数据
+        async function loadData() {
+            try {
+                const response = await fetch('./speech_data.json');
+                if (response.ok) {
+                    speechData = await response.json();
+                    renderAll();
+                    alert('数据加载成功！');
+                } else {
+                    // 使用默认数据结构
+                    initDefaultData();
+                    renderAll();
+                    alert('文件不存在，已初始化默认数据结构');
+                }
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                initDefaultData();
+                renderAll();
+                alert('加载失败，已初始化默认数据结构');
+            }
+        }
+        
+        // 初始化默认数据
+        function initDefaultData() {
+            speechData = {
+                config: {
+                    audio_path: "./audio33/",
+                    efficient_chance: 0.05,
+                    default_repeat_interval: 300000
+                },
+                expressions_comments: {
+                    DEFAULT: [],
+                    NORMAL: [],
+                    EFFICIENT: []
+                },
+                learning_comments: {
+                    START: [],
+                    LONG_SESSION: []
+                },
+                study_duration_levels: [
+                    { range: [0, 1.5], level: "C", theme: "理想、进取" },
+                    { range: [1.5, 3], level: "CC", theme: "梦想、梦境" },
+                    { range: [3, 4.5], level: "CCC", theme: "感伤、坚毅" }
+                ],
+                duration_comments: {
+                    C: [],
+                    CC: [],
+                    CCC: []
+                }
+            };
+        }
+        
+        // 渲染所有内容
+        function renderAll() {
+            renderConfig();
+            renderDurationLevels();
+            renderSpeechCategories();
+        }
+        
+        // 渲染配置
+        function renderConfig() {
+            document.getElementById('audio-path').value = speechData.config?.audio_path || '';
+            document.getElementById('efficient-chance').value = speechData.config?.efficient_chance || '';
+            document.getElementById('default-repeat-interval').value = speechData.config?.default_repeat_interval || '';
+        }
+        
+        // 渲染时长等级
+        function renderDurationLevels() {
+            const container = document.getElementById('duration-levels');
+            container.innerHTML = '';
+            
+            if (speechData.study_duration_levels) {
+                speechData.study_duration_levels.forEach((level, index) => {
+                    const levelDiv = document.createElement('div');
+                    levelDiv.className = 'level-item';
+                    levelDiv.innerHTML = `
+                        <input type="text" class="level-code" value="${level.level}" onchange="updateLevel(${index}, 'level', this.value)">
+                        <span>范围:</span>
+                        <input type="number" class="range-input" step="0.5" value="${level.range[0]}" onchange="updateLevelRange(${index}, 0, this.value)">
+                        <span>-</span>
+                        <input type="number" class="range-input" step="0.5" value="${level.range[1]}" onchange="updateLevelRange(${index}, 1, this.value)">
+                        <span>小时</span>
+                        <input type="text" class="theme-input" value="${level.theme}" onchange="updateLevel(${index}, 'theme', this.value)" placeholder="主题描述">
+                        <button class="btn btn-danger" onclick="removeLevel(${index})" style="margin-left: 10px;">删除</button>
+                    `;
+                    container.appendChild(levelDiv);
+                });
+            }
+            
+            // 添加新等级按钮
+            const addBtn = document.createElement('button');
+            addBtn.className = 'btn btn-primary add-speech-btn';
+            addBtn.textContent = '添加等级';
+            addBtn.onclick = addLevel;
+            container.appendChild(addBtn);
+        }
+        
+        // 渲染台词分类
+        function renderSpeechCategories() {
+            const container = document.getElementById('speech-categories');
+            container.innerHTML = '';
+            
+            // 表情台词
+            renderSpeechCategory(container, '表情台词', speechData.expressions_comments, 'expressions_comments');
+            
+            // 学习台词
+            renderSpeechCategory(container, '学习过程台词', speechData.learning_comments, 'learning_comments');
+            
+            // 时长台词
+            renderSpeechCategory(container, '学习时长台词', speechData.duration_comments, 'duration_comments');
+        }
+        
+        // 渲染单个台词分类
+        function renderSpeechCategory(container, title, data, dataKey) {
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'speech-category';
+            
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'category-header';
+            headerDiv.textContent = title;
+            headerDiv.onclick = () => toggleCategory(categoryDiv);
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'category-content';
+            
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    const subCategoryDiv = document.createElement('div');
+                    subCategoryDiv.innerHTML = `
+                        <h4 style="margin: 15px 0 10px 0; color: #666;">${key}</h4>
+                    `;
+                    
+                    const speeches = data[key] || [];
+                    speeches.forEach((speech, index) => {
+                        const speechDiv = createSpeechEditor(speech, dataKey, key, index);
+                        subCategoryDiv.appendChild(speechDiv);
+                    });
+                    
+                    // 添加台词按钮
+                    const addBtn = document.createElement('button');
+                    addBtn.className = 'btn btn-primary add-speech-btn';
+                    addBtn.textContent = `添加${key}台词`;
+                    addBtn.onclick = () => addSpeech(dataKey, key);
+                    subCategoryDiv.appendChild(addBtn);
+                    
+                    contentDiv.appendChild(subCategoryDiv);
+                });
+            }
+            
+            categoryDiv.appendChild(headerDiv);
+            categoryDiv.appendChild(contentDiv);
+            container.appendChild(categoryDiv);
+        }
+        
+        // 创建台词编辑器
+        function createSpeechEditor(speech, dataKey, subKey, index) {
+            const speechDiv = document.createElement('div');
+            speechDiv.className = 'speech-item';
+            speechDiv.innerHTML = `
+                <div class="speech-header">
+                    <span>台词 #${index + 1}</span>
+                    <button class="btn btn-danger" onclick="removeSpeech('${dataKey}', '${subKey}', ${index})">删除</button>
+                </div>
+                <div class="speech-content">
+                    <div class="speech-field">
+                        <label>日文台词:</label>
+                        <textarea onchange="updateSpeech('${dataKey}', '${subKey}', ${index}, 'jp', this.value)">${speech.jp || ''}</textarea>
+                    </div>
+                    <div class="speech-field">
+                        <label>中文台词:</label>
+                        <textarea onchange="updateSpeech('${dataKey}', '${subKey}', ${index}, 'zh', this.value)">${speech.zh || ''}</textarea>
+                    </div>
+                    <div class="speech-field">
+                        <label>音频前缀:</label>
+                        <input type="text" value="${speech.audio_prefix || ''}" onchange="updateSpeech('${dataKey}', '${subKey}', ${index}, 'audio_prefix', this.value)">
+                    </div>
+                </div>
+            `;
+            return speechDiv;
+        }
+        
+        // 切换分类显示
+        function toggleCategory(categoryDiv) {
+            const content = categoryDiv.querySelector('.category-content');
+            content.classList.toggle('active');
+        }
+        
+        // 更新配置
+        function updateConfig() {
+            if (!speechData.config) speechData.config = {};
+            speechData.config.audio_path = document.getElementById('audio-path').value;
+            speechData.config.efficient_chance = parseFloat(document.getElementById('efficient-chance').value) || 0.05;
+            speechData.config.default_repeat_interval = parseInt(document.getElementById('default-repeat-interval').value) || 300000;
+        }
+        
+        // 更新等级
+        function updateLevel(index, field, value) {
+            if (!speechData.study_duration_levels[index]) return;
+            speechData.study_duration_levels[index][field] = value;
+        }
+        
+        // 更新等级范围
+        function updateLevelRange(index, rangeIndex, value) {
+            if (!speechData.study_duration_levels[index]) return;
+            speechData.study_duration_levels[index].range[rangeIndex] = parseFloat(value) || 0;
+        }
+        
+        // 添加等级
+        function addLevel() {
+            if (!speechData.study_duration_levels) speechData.study_duration_levels = [];
+            speechData.study_duration_levels.push({
+                range: [0, 1],
+                level: "NEW",
+                theme: "新主题"
+            });
+            renderDurationLevels();
+        }
+        
+        // 删除等级
+        function removeLevel(index) {
+            if (confirm('确定要删除这个等级吗？')) {
+                speechData.study_duration_levels.splice(index, 1);
+                renderDurationLevels();
+            }
+        }
+        
+        // 更新台词
+        function updateSpeech(dataKey, subKey, index, field, value) {
+            if (!speechData[dataKey] || !speechData[dataKey][subKey]) return;
+            if (!speechData[dataKey][subKey][index]) return;
+            speechData[dataKey][subKey][index][field] = value;
+        }
+        
+        // 添加台词
+        function addSpeech(dataKey, subKey) {
+            if (!speechData[dataKey]) speechData[dataKey] = {};
+            if (!speechData[dataKey][subKey]) speechData[dataKey][subKey] = [];
+            
+            speechData[dataKey][subKey].push({
+                jp: '',
+                zh: '',
+                audio_prefix: subKey
+            });
+            
+            renderSpeechCategories();
+        }
+        
+        // 删除台词
+        function removeSpeech(dataKey, subKey, index) {
+            if (confirm('确定要删除这条台词吗？')) {
+                speechData[dataKey][subKey].splice(index, 1);
+                renderSpeechCategories();
+            }
+        }
+        
+        // 保存数据
+        function saveData() {
+            updateConfig();
+            
+            const jsonStr = JSON.stringify(speechData, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'speech_data.json';
+            a.click();
+            
+            URL.revokeObjectURL(url);
+            alert('数据已保存为文件，请将其复制到项目目录中！');
+        }
+        
+        // 导出JSON
+        function exportJson() {
+            updateConfig();
+            const jsonOutput = document.getElementById('json-output');
+            const jsonSection = document.getElementById('json-section');
+            
+            jsonOutput.textContent = JSON.stringify(speechData, null, 2);
+            jsonSection.style.display = 'block';
+            jsonOutput.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // 导入JSON
+        function importJson() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            speechData = JSON.parse(e.target.result);
+                            renderAll();
+                            alert('JSON导入成功！');
+                        } catch (error) {
+                            alert('JSON格式错误：' + error.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        }
+        
+        // 页面加载时初始化
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html> 

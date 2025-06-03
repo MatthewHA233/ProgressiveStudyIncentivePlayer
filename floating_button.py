@@ -14,6 +14,14 @@ from PyQt5.QtGui import QCursor, QColor, QFont, QPainter, QLinearGradient, QRadi
 import subprocess
 from datetime import datetime, timedelta
 
+# 导入33娘
+try:
+    from neko33_pet import create_neko33_pet, get_neko33_pet, destroy_neko33_pet
+    NEKO33_AVAILABLE = True
+except ImportError:
+    print("33娘模块不可用")
+    NEKO33_AVAILABLE = False
+
 # 全局变量保存应用实例和按钮实例
 app_instance = None
 button_instance = None
@@ -331,6 +339,10 @@ class FloatingButton(QWidget):
         self.heatmap_visible = True
         self.opacity = 1.0  # 透明度，1.0表示完全不透明
         
+        # 33娘相关
+        self.neko33_enabled = True  # 默认显示
+        self.neko33_pet = None
+        
         # 设置窗口属性
         self.setWindowFlags(
             Qt.FramelessWindowHint |  # 无边框
@@ -364,6 +376,10 @@ class FloatingButton(QWidget):
         self.status_timer.timeout.connect(self.check_status_updates)
         self.status_timer.start(1000)  # 每秒检查一次
         
+        # 初始化33娘（如果可用）
+        if NEKO33_AVAILABLE:
+            self.init_neko33_pet()
+    
     def initUI(self):
         # 主布局
         main_layout = QVBoxLayout()
@@ -812,6 +828,13 @@ class FloatingButton(QWidget):
         menu.addMenu(opacity_menu)
         menu.addSeparator()
         
+        # 添加33娘控制选项
+        if NEKO33_AVAILABLE:
+            neko33_action = QAction("隐藏33娘" if self.neko33_enabled else "显示33娘", self)
+            neko33_action.triggered.connect(self.toggle_neko33_pet)
+            menu.addAction(neko33_action)
+            menu.addSeparator()
+        
         # 添加退出选项
         exit_action = QAction("退出", self)
         exit_action.triggered.connect(self.exit_application)
@@ -916,6 +939,14 @@ class FloatingButton(QWidget):
     
     def exit_application(self):
         """退出应用程序"""
+        # 清理33娘资源
+        if NEKO33_AVAILABLE and self.neko33_pet:
+            try:
+                destroy_neko33_pet()
+                print("33娘资源已清理")
+            except Exception as e:
+                print(f"清理33娘资源时出错: {e}")
+        
         self.close()
         # 终止整个Python进程
         import signal
@@ -1091,6 +1122,55 @@ class FloatingButton(QWidget):
     def stop_music(self):
         """发送停止音乐信号"""
         self.send_music_control_signal('stop')
+
+    def init_neko33_pet(self):
+        """初始化33娘"""
+        try:
+            self.neko33_pet = create_neko33_pet()
+            if self.neko33_pet:
+                # 设置跟随目标
+                self.neko33_pet.setFollowTarget(self)
+                # 默认显示33娘
+                self.neko33_pet.setEnabled(True)
+                print("33娘初始化成功")
+        except Exception as e:
+            print(f"初始化33娘失败: {e}")
+            self.neko33_enabled = False
+    
+    def toggle_neko33_pet(self):
+        """切换33娘显示状态"""
+        if not NEKO33_AVAILABLE or not self.neko33_pet:
+            print("33娘不可用")
+            return
+            
+        self.neko33_enabled = not self.neko33_enabled
+        self.neko33_pet.setEnabled(self.neko33_enabled)
+        
+        if self.neko33_enabled:
+            print("33娘已显示")
+        else:
+            print("33娘已隐藏")
+    
+    def update_neko33_position(self):
+        """通知33娘更新位置"""
+        if self.neko33_enabled and self.neko33_pet:
+            self.neko33_pet.updatePosition()
+    
+    def ensure_neko33_on_top(self):
+        """确保33娘层级在悬浮按钮之上"""
+        if self.neko33_enabled and self.neko33_pet:
+            self.neko33_pet.raise_()
+            if self.neko33_pet.speech_bubble and self.neko33_pet.speech_bubble.visible:
+                self.neko33_pet.speech_bubble.raise_()
+    
+    def moveEvent(self, event):
+        """窗口移动事件"""
+        super().moveEvent(event)
+        # 悬浮按钮移动时，通知33娘更新位置
+        if hasattr(self, 'neko33_pet') and self.neko33_pet and self.neko33_enabled:
+            QTimer.singleShot(50, self.update_neko33_position)  # 延迟50ms更新位置
+            # 确保33娘层级在悬浮按钮之上
+            QTimer.singleShot(100, self.ensure_neko33_on_top)  # 延迟100ms确保层级
 
 def create_button():
     """创建悬浮按钮"""
