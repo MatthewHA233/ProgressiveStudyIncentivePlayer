@@ -46,6 +46,10 @@ class SpeechBubble(QWidget):
         self.text = text
         self.updateSize()
         self.update()
+        
+        # 如果有父级33娘组件，通知其更新气泡位置
+        if hasattr(self, 'parent_pet') and self.parent_pet:
+            QTimer.singleShot(50, self.parent_pet.updateBubblePosition)  # 延迟50ms确保尺寸计算完成
     
     def updateSize(self):
         """根据文本内容更新气泡大小"""
@@ -172,6 +176,11 @@ class Neko33Pet(QWidget):
         self.audio_playing = False
         self.current_audio_timer = None  # 当前的音频定时器
         self.speech_sequence_timers = []  # 存储当前台词序列的所有定时器
+        
+        # 新增：学习状态跟踪
+        self.last_study_time_string = None  # 上次检测到的学习时长字符串
+        self.last_default_speech_time = 0   # 上次播放DEFAULT台词的时间戳
+        self.is_in_default_state = False    # 是否处于未学习状态
         
     def setupUI(self):
         """设置UI"""
@@ -337,6 +346,38 @@ class Neko33Pet(QWidget):
         except Exception as e:
             print(f"更新位置失败: {e}")
     
+    def updateBubblePosition(self):
+        """更新对话气泡位置（独立于跟随目标）"""
+        if not self.speech_bubble:
+            return
+            
+        try:
+            # 获取33娘当前位置
+            current_pos = self.pos()
+            
+            # 计算气泡位置（在33娘左侧）
+            bubble_pos = QPoint(current_pos.x() - self.speech_bubble.width() + 15, 
+                              current_pos.y() + 30)
+            
+            # 确保气泡不超出屏幕边界
+            screen = QApplication.desktop().availableGeometry()
+            if bubble_pos.x() < 0:
+                bubble_pos.setX(0)
+            if bubble_pos.y() < 0:
+                bubble_pos.setY(0)
+            elif bubble_pos.y() + self.speech_bubble.height() > screen.height():
+                bubble_pos.setY(screen.height() - self.speech_bubble.height())
+            
+            # 设置气泡位置
+            self.speech_bubble.move(bubble_pos)
+            print(f"更新气泡位置: {bubble_pos.x()}, {bubble_pos.y()}")
+            
+            # 确保气泡在最前面
+            self.speech_bubble.raise_()
+            
+        except Exception as e:
+            print(f"更新气泡位置失败: {e}")
+    
     def checkStudyStatus(self):
         """检查学习状态"""
         if not self.enabled:
@@ -357,9 +398,11 @@ class Neko33Pet(QWidget):
             
             # 获取学习状态
             status = self.getStudyStatus()
-            if status != self.last_status:
-                self.handleStatusChange(status)
-                self.last_status = status
+            
+            # 总是调用handleStatusChange，让它内部判断是否需要触发台词
+            # 这样可以支持定期重复DEFAULT台词功能
+            self.handleStatusChange(status)
+            self.last_status = status
                 
         except Exception as e:
             print(f"检查学习状态失败: {e}")
@@ -390,14 +433,31 @@ class Neko33Pet(QWidget):
             today = datetime.now().strftime("%Y-%m-%d")
             csv_path = os.path.join("statistics", "five_minute_logs", f"五分钟记录_{today}.csv")
             
+            # 获取学习时长信息
+            study_duration_hours = self.getStudyDuration()
+            study_time_string = self.getStudyTimeString()
+            level = self.getLevelByHours(study_duration_hours)
+            
             if not os.path.exists(csv_path):
-                return {"studying": False, "efficient": False}
+                return {
+                    "studying": False, 
+                    "efficient": False,
+                    "study_time_string": study_time_string,
+                    "study_duration_hours": study_duration_hours,
+                    "level": level
+                }
             
             # 读取最新状态
             with open(csv_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
                 if len(lines) <= 1:  # 只有标题行
-                    return {"studying": False, "efficient": False}
+                    return {
+                        "studying": False, 
+                        "efficient": False,
+                        "study_time_string": study_time_string,
+                        "study_duration_hours": study_duration_hours,
+                        "level": level
+                    }
                 
                 last_line = lines[-1].strip()
                 parts = last_line.split(',')
@@ -413,13 +473,28 @@ class Neko33Pet(QWidget):
                     if time_diff <= 7:  # 7分钟内的记录有效
                         return {
                             "studying": True,
-                            "efficient": status == "高效"
+                            "efficient": status == "高效",
+                            "study_time_string": study_time_string,
+                            "study_duration_hours": study_duration_hours,
+                            "level": level
                         }
             
-            return {"studying": False, "efficient": False}
+            return {
+                "studying": False, 
+                "efficient": False,
+                "study_time_string": study_time_string,
+                "study_duration_hours": study_duration_hours,
+                "level": level
+            }
         except Exception as e:
             print(f"获取学习状态失败: {e}")
-            return {"studying": False, "efficient": False}
+            return {
+                "studying": False, 
+                "efficient": False,
+                "study_time_string": "0时0分",
+                "study_duration_hours": 0.0,
+                "level": "C"
+            }
     
     def getStudyDuration(self):
         """获取当前学习时长（小时）"""
@@ -442,6 +517,19 @@ class Neko33Pet(QWidget):
             print(f"获取学习时长失败: {e}")
             return 0.0
     
+    def getStudyTimeString(self):
+        """获取学习时长字符串"""
+        try:
+            button_data_path = os.path.join(os.path.dirname(__file__), "floating_button_data.json")
+            if os.path.exists(button_data_path):
+                with open(button_data_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return data.get('study_time', '0时0分')
+            return '0时0分'
+        except Exception as e:
+            print(f"获取学习时长字符串失败: {e}")
+            return '0时0分'
+    
     def getLevelByHours(self, hours):
         """根据学习时长获取等级"""
         if not self.speech_data or 'study_duration_levels' not in self.speech_data:
@@ -455,29 +543,72 @@ class Neko33Pet(QWidget):
     def handleStatusChange(self, status):
         """处理状态变化"""
         try:
+            # 检查学习时长是否发生变化
+            current_study_time = status.get("study_time_string", "0时0分")
+            study_time_changed = (self.last_study_time_string != current_study_time)
+            
+            if study_time_changed:
+                print(f"学习时长变化: {self.last_study_time_string} -> {current_study_time}")
+                self.last_study_time_string = current_study_time
+            
+            # 获取当前时间戳
+            current_time = time.time()
+            
+            # 获取配置信息
+            default_repeat_interval = 300  # 默认5分钟间隔（秒）
+            if self.speech_data and 'config' in self.speech_data:
+                default_repeat_interval = self.speech_data['config'].get('default_repeat_interval', 300000) / 1000  # 转换为秒
+            
             if not status["studying"]:
                 # 未学习状态 - 使用惊诧表情
                 self.loadExpression(7)
-                self.showRandomSpeech("DEFAULT")
+                self.is_in_default_state = True
+                
+                # 检查是否需要播放DEFAULT台词
+                # 1. 学习时长发生变化时
+                # 2. 距离上次DEFAULT台词已经过了指定间隔时间
+                should_play_default = (
+                    study_time_changed or 
+                    (current_time - self.last_default_speech_time > default_repeat_interval)
+                )
+                
+                if should_play_default:
+                    print(f"触发DEFAULT台词 - 时长变化: {study_time_changed}, 时间间隔: {current_time - self.last_default_speech_time:.1f}秒")
+                    self.last_default_speech_time = current_time
+                    self.showRandomSpeech("DEFAULT")
+                    
             elif status["efficient"]:
                 # 高效学习状态 - 使用开心表情
                 self.loadExpression(2)
                 
-                # 5%概率显示EFFICIENT台词，95%概率显示等级台词
-                if self.speech_data:
-                    efficient_chance = self.speech_data.get('config', {}).get('efficient_chance', 0.05)
-                    import random
-                    if random.random() < efficient_chance:
-                        self.showRandomSpeech("EFFICIENT")
-                    else:
-                        # 显示等级对应台词
-                        hours = self.getStudyDuration()
-                        level = self.getLevelByHours(hours)
-                        self.showRandomSpeech(level, is_duration=True)
+                # 如果从未学习状态转为学习状态，重置标志
+                if self.is_in_default_state:
+                    self.is_in_default_state = False
+                
+                # 只有在学习时长变化时才触发台词
+                if study_time_changed:
+                    # 5%概率显示EFFICIENT台词，95%概率显示等级台词
+                    if self.speech_data:
+                        efficient_chance = self.speech_data.get('config', {}).get('efficient_chance', 0.05)
+                        import random
+                        if random.random() < efficient_chance:
+                            self.showRandomSpeech("EFFICIENT")
+                        else:
+                            # 显示等级对应台词
+                            level = status.get("level", "C")
+                            self.showRandomSpeech(level, is_duration=True)
+                    
             else:
                 # 学习但不够专注 - 使用生气表情
                 self.loadExpression(1)
-                self.showRandomSpeech("NORMAL")
+                
+                # 如果从未学习状态转为学习状态，重置标志
+                if self.is_in_default_state:
+                    self.is_in_default_state = False
+                
+                # 只有在学习时长变化时才触发台词
+                if study_time_changed:
+                    self.showRandomSpeech("NORMAL")
                 
         except Exception as e:
             print(f"处理状态变化失败: {e}")
@@ -518,6 +649,9 @@ class Neko33Pet(QWidget):
             if self.audio_playing or self.speech_sequence_timers:
                 print("检测到正在播放的台词，停止当前播放")
                 self.stopCurrentSpeech()
+            
+            # 确保气泡位置正确
+            self.updateBubblePosition()
                 
             comments = []
             if is_duration:
@@ -708,6 +842,9 @@ class Neko33Pet(QWidget):
         
         print("开始测试音频时机...")
         
+        # 确保气泡位置正确
+        self.updateBubblePosition()
+        
         # 显示日文
         self.speech_bubble.setText(test_comment["jp"])
         self.speech_bubble.showBubble()
@@ -818,6 +955,12 @@ class Neko33Pet(QWidget):
         """延迟创建对话气泡"""
         try:
             self.speech_bubble = SpeechBubble()
+            self.speech_bubble.parent_pet = self  # 设置父级引用
+            
+            # 设置初始位置（在33娘左侧）
+            initial_pos = QPoint(self.pos().x() - 200, self.pos().y() + 30)
+            self.speech_bubble.move(initial_pos)
+            
             print("对话气泡创建成功")
         except Exception as e:
             print(f"创建对话气泡失败: {e}")
@@ -851,7 +994,26 @@ if __name__ == '__main__':
     pet = Neko33Pet()
     pet.show()
     
-    # 测试位置
-    pet.move(100, 100)
+    # 设置合理的测试位置
+    screen = QApplication.desktop().availableGeometry()
+    test_x = min(300, screen.width() - 200)  # 确保不超出屏幕右边界
+    test_y = min(200, screen.height() - 200)  # 确保不超出屏幕下边界
+    pet.move(test_x, test_y)
+    print(f"33娘位置设置为: ({test_x}, {test_y})")
+    
+    # 3秒后测试DEFAULT台词（模拟未学习状态）
+    def test_default_speech():
+        print("测试DEFAULT台词...")
+        # 模拟未学习状态
+        status = {
+            "studying": False,
+            "efficient": False,
+            "study_time_string": "2时30分",
+            "study_duration_hours": 2.5,
+            "level": "CC"
+        }
+        pet.handleStatusChange(status)
+    
+    QTimer.singleShot(3000, test_default_speech)
     
     sys.exit(app.exec_()) 
