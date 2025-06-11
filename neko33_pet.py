@@ -234,6 +234,9 @@ class Neko33Pet(QWidget):
         # 加载台词数据
         self.loadSpeechData()
         
+        # 加载音量设置
+        self.current_volume = self.load_volume_setting()
+        
     def setupTimers(self):
         """设置定时器"""
         # 状态检查定时器
@@ -384,6 +387,9 @@ class Neko33Pet(QWidget):
             return
             
         try:
+            # 检查音量变更信号
+            self.check_volume_change_signal()
+            
             # 检查OBS模式状态
             self.checkOBSMode()
             
@@ -730,9 +736,12 @@ class Neko33Pet(QWidget):
                     print("停止之前的音频播放")
                 
                 pygame.mixer.music.load(audio_path)
+                # 33娘台词音量为预设音量的3倍，但不超过1.0
+                neko_volume = min(self.current_volume * 3.0, 1.0)
+                pygame.mixer.music.set_volume(neko_volume)
                 pygame.mixer.music.play()
                 self.audio_playing = True
-                print(f"播放音频: {audio_path}")
+                print(f"播放音频: {audio_path}, 预设音量: {int(self.current_volume * 100)}%, 33娘音量: {int(neko_volume * 100)}%")
                 
                 # 获取音频文件时长（秒）
                 sound = pygame.mixer.Sound(audio_path)
@@ -965,6 +974,41 @@ class Neko33Pet(QWidget):
         except Exception as e:
             print(f"创建对话气泡失败: {e}")
             self.speech_bubble = None
+    
+    def load_volume_setting(self):
+        """从配置文件加载音量设置"""
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                volume = config.get('volume', 0.04)  # 默认4%
+                print(f"33娘音量设置: {int(volume * 100)}%")
+                return volume
+            return 0.04
+        except Exception as e:
+            print(f"加载音量设置失败: {e}")
+            return 0.04
+    
+    def check_volume_change_signal(self):
+        """检查音量变更信号"""
+        try:
+            signal_path = os.path.join(os.path.dirname(__file__), "volume_change_signal.json")
+            if os.path.exists(signal_path):
+                with open(signal_path, 'r', encoding='utf-8') as f:
+                    signal_data = json.load(f)
+                
+                new_volume = signal_data.get('volume')
+                if new_volume is not None and new_volume != self.current_volume:
+                    self.current_volume = new_volume
+                    print(f"33娘音量已更新为: 预设音量 {int(self.current_volume * 100)}% (实际播放音量 {int(min(self.current_volume * 3.0, 1.0) * 100)}%)")
+                    
+                    # 如果当前正在播放音频，更新音量（三倍音量）
+                    if self.audio_playing and AUDIO_AVAILABLE:
+                        neko_volume = min(self.current_volume * 3.0, 1.0)
+                        pygame.mixer.music.set_volume(neko_volume)
+        except Exception as e:
+            print(f"检查33娘音量变更信号时出错: {e}")
 
 # 全局33娘实例
 neko33_pet = None

@@ -776,6 +776,31 @@ class FloatingButton(QWidget):
                 action.setIcon(self.style().standardIcon(self.style().SP_DialogApplyButton))
             opacity_menu.addAction(action)
 
+        # 添加音量调节子菜单
+        volume_menu = QMenu("调整音量", self)
+        volume_menu.setStyleSheet(menu.styleSheet())
+        
+        # 获取当前音量设置
+        current_volume = self.get_current_volume()
+        
+        volume_values = [
+            ("静音 (0%)", 0.0),
+            ("很小 (2%)", 0.02), 
+            ("较小 (4%)", 0.04),
+            ("正常 (8%)", 0.08),
+            ("较大 (15%)", 0.15),
+            ("很大 (25%)", 0.25),
+            ("最大 (50%)", 0.50)
+        ]
+        
+        for label, value in volume_values:
+            action = QAction(label, self)
+            action.triggered.connect(lambda checked, v=value: self.set_volume(v))
+            # 检查当前音量是否匹配（允许小误差）
+            if abs(current_volume - value) < 0.01:
+                action.setIcon(self.style().standardIcon(self.style().SP_DialogApplyButton))
+            volume_menu.addAction(action)
+
         # 添加功能菜单项
         menu.addAction(auto_logger_action)
         menu.addSeparator()
@@ -826,6 +851,7 @@ class FloatingButton(QWidget):
         menu.addSeparator()
         menu.addAction(heatmap_action)
         menu.addMenu(opacity_menu)
+        menu.addMenu(volume_menu)
         menu.addSeparator()
         
         # 添加33娘控制选项
@@ -920,6 +946,50 @@ class FloatingButton(QWidget):
         """设置窗口透明度"""
         self.opacity = value
         self.setWindowOpacity(value)
+    
+    def get_current_volume(self):
+        """获取当前音量设置"""
+        try:
+            config = self.load_config()
+            return config.get('volume', 0.04)  # 默认4%
+        except Exception as e:
+            print(f"获取当前音量设置时出错: {e}")
+            return 0.04
+    
+    def set_volume(self, value):
+        """设置全局音量"""
+        try:
+            # 更新配置文件
+            config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+            config = self.load_config()
+            config['volume'] = value
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            
+            # 发送音量变更信号给主程序
+            self.send_volume_change_signal(value)
+            
+            print(f"全局音量已设置为: {int(value * 100)}%")
+            
+        except Exception as e:
+            print(f"设置音量时出错: {e}")
+    
+    def send_volume_change_signal(self, volume):
+        """发送音量变更信号"""
+        try:
+            signal_path = os.path.join(os.path.dirname(__file__), "volume_change_signal.json")
+            signal_data = {
+                'volume': volume,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            with open(signal_path, 'w', encoding='utf-8') as f:
+                json.dump(signal_data, f, ensure_ascii=False, indent=2)
+            print(f"已发送音量变更信号: {int(volume * 100)}%")
+            
+        except Exception as e:
+            print(f"发送音量变更信号时出错: {e}")
     
     def open_csv_file(self):
         """打开当日的五分钟记录CSV文件"""

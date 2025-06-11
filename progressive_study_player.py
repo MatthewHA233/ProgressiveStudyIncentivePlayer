@@ -294,18 +294,15 @@ def get_wallpaper_engine_mode():
 
 # 设置音量
 def get_volume():
-    while True:
-        try:
-            volume = console.input("[bold cyan]请输入音量百分比（默认4%）：[/bold cyan]").strip()
-            if not volume:
-                return 0.04
-            volume = float(volume) / 100
-            if 0 <= volume <= 1:
-                return volume
-            else:
-                log_and_print("[bold red]请输入0到100之间的数字。[/bold red]")
-        except ValueError:
-            log_and_print("[bold red]请输入有效的数字。[/bold red]")
+    """从配置文件获取音量设置"""
+    try:
+        config = load_config()
+        volume = config.get('volume', 0.04)  # 默认4%
+        log_and_print(f"[cyan]从配置文件加载音量设置: {int(volume * 100)}%[/cyan]")
+        return volume
+    except Exception as e:
+        log_and_print(f"[bold red]获取音量设置时出错: {e}，使用默认值4%[/bold red]")
+        return 0.04
 
 # 将 update_artwork_info 函数移到文件前面，在 play_music 函数之前
 def update_artwork_info(music_name, music_duration, wallpaper_id=None, wallpaper_name=None):
@@ -892,6 +889,10 @@ def get_music_status_path():
     """获取音乐播放状态文件路径"""
     return os.path.join(os.path.dirname(__file__), "music_playing_status.json")
 
+def get_volume_change_signal_path():
+    """获取音量变更信号文件路径"""
+    return os.path.join(os.path.dirname(__file__), "volume_change_signal.json")
+
 def update_music_status(is_playing, is_paused=False, is_finished=False):
     """更新音乐播放状态到文件，并处理OBS场景切换"""
     global music_playing_status, music_paused, music_finished
@@ -1116,6 +1117,34 @@ def stop_current_music():
     except Exception as e:
         log_and_print(f"[bold red]停止音乐时出错: {e}[/bold red]")
 
+def check_volume_change_signal():
+    """检查并处理音量变更信号"""
+    global volume
+    
+    try:
+        signal_path = get_volume_change_signal_path()
+        if not os.path.exists(signal_path):
+            return
+        
+        with open(signal_path, 'r', encoding='utf-8') as f:
+            signal_data = json.load(f)
+        
+        new_volume = signal_data.get('volume')
+        if new_volume is not None and new_volume != volume:
+            volume = new_volume
+            log_and_print(f"[cyan]全局音量已更新为: {int(volume * 100)}%[/cyan]")
+            
+            # 如果音乐正在播放，立即应用新音量
+            if music_playing_status and not STREAMING_MODE:
+                pygame.mixer.music.set_volume(volume)
+                log_and_print(f"[cyan]已应用新音量到当前播放的音乐[/cyan]")
+        
+        # 删除信号文件以避免重复处理
+        os.remove(signal_path)
+        
+    except Exception as e:
+        log_and_print(f"[bold red]处理音量变更信号时出错: {e}[/bold red]")
+
 def main_loop():
     global current_level, previous_time, previous_target_time  # 更新全局变量引用
     while True:
@@ -1312,6 +1341,9 @@ def main_loop():
 
         # 检查音乐控制信号
         check_music_control_signal()
+
+        # 检查音量变更信号
+        check_volume_change_signal()
 
         time.sleep(2)  # 减少间隔到2秒，让audio_visualizer.html能更及时响应状态变化
 
